@@ -1,0 +1,19 @@
+name: Feature request / پیشنهاد قابلیت
+description: Suggest an idea for Ember
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What would you like? / چه قابلیتی می‌خواهید؟
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why is it useful? / چرا مفید است؟
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered

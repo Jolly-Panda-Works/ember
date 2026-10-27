@@ -1,31 +1,71 @@
-name: Build Ember
+name: Build and Release
 
+# Every push builds Ember-Setup.exe, Ember-Portable.exe and Ember-Remote.apk.
+# Pushes to main also get an automatic version number, a git tag and a public
+# GitHub Release with all three attached (that is what the in-app update check reads).
 on:
   push:
-    branches: [main]
-    tags: ['v*']
+    # Dependabot branches are built through their pull request instead
+    branches: ["**", "!dependabot/**"]
+    tags: ["v*"]
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: write
 
+# A newer push to the same branch makes an older, still-running build pointless.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Syntax check
+        run: npm run check
+      - name: Unit tests
+        run: npm test
+      # One version number for everything: About page, exe properties and the release name.
+      #   main       -> MAJOR.MINOR.<run number>   e.g. 1.0.42
+      #   tag vX.Y.Z -> X.Y.Z
+      #   other      -> MAJOR.MINOR.0-dev.<run>    e.g. 1.0.0-dev.43
+      - name: Decide the version
+        id: ver
+        run: |
+          version=$(node tools/set-version.js --ci "$GITHUB_REF" "$GITHUB_REF_NAME" "$GITHUB_RUN_NUMBER")
+          echo "Building Ember $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
   windows:
+    needs: check
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Set version
+        run: node tools/set-version.js ${{ needs.check.outputs.version }}
       - run: npm install
       - run: npm run dist
       - uses: actions/upload-artifact@v4
         with:
           name: ember-windows
           path: |
-            dist/*.exe
+            dist/Ember-Setup.exe
+            dist/Ember-Portable.exe
+          retention-days: 14
 
   android:
+    needs: check
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -49,16 +89,25 @@ jobs:
         with:
           name: ember-android
           path: mobile/Ember-Remote.apk
+          retention-days: 14
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, android]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+    needs: [check, windows, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
           path: out
+      - name: Create checksums
+        working-directory: out
+        run: sha256sum Ember-Setup.exe Ember-Portable.exe Ember-Remote.apk > SHA256SUMS.txt
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ needs.check.outputs.version }}
+          name: Ember v${{ needs.check.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          make_latest: true
           files: out/*
