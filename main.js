@@ -41,6 +41,8 @@ function load() {
   db.settings.notify ??= true;         // Windows notifications
   db.settings.tray ??= false;          // closing the window keeps Ember in the tray
   db.settings.autostart ??= false;
+  db.settings.autoDownload ??= true;   // download new versions in the background
+  db.settings.installOnQuit ??= true;  // install a downloaded version when Ember closes
   migrateCategories();
 }
 
@@ -70,8 +72,8 @@ const str = (v, max) => String(v ?? '').trim().slice(0, max);
 function setCategories(list) {
   if (!Array.isArray(list)) return;
   db.categories = list.map((c) => ({
-    id: str(c.id, 40) || newId(), name: str(c.name, 40) || 'دسته‌بندی', icon: str(c.icon, 8) || '🗂️',
-    values: (Array.isArray(c.values) ? c.values : []).map((v) => ({ id: str(v.id, 40) || newId(), icon: str(v.icon, 8) || '•', name: str(v.name, 40) || 'بدون نام' })),
+    id: str(c.id, 40) || newId(), name: str(c.name, 40) || 'دسته‌بندی', icon: str(c.icon, 16) || '🗂️',
+    values: (Array.isArray(c.values) ? c.values : []).map((v) => ({ id: str(v.id, 40) || newId(), icon: str(v.icon, 16) || '•', name: str(v.name, 40) || 'بدون نام' })),
   }));
   // drop assignments that point to deleted categories or values
   for (const p of db.projects) {
@@ -372,7 +374,7 @@ function applyRemote() {
 }
 const settingsOut = () => ({
   ...db.settings, ips: lanIPs(), version: app.getVersion(), repo: updates.REPO_URL,
-  portable: !!process.env.PORTABLE_EXECUTABLE_FILE, appUpdate, justUpdated,
+  portable: !!process.env.PORTABLE_EXECUTABLE_FILE, updateMode: updateMode(), appUpdate, justUpdated,
 });
 
 /* ---------- notifications & tray ---------- */
@@ -468,7 +470,7 @@ async function pullProject(id) {
 }
 
 /* ---------- Ember's own updates (GitHub Releases) ---------- */
-let appUpdate = { checking: false, checkedAt: null, latest: null, available: false, error: null, downloading: false, progress: 0 };
+let appUpdate = { checking: false, checkedAt: null, latest: null, available: false, error: null, downloading: false, progress: 0, ready: false, mode: null };
 let justUpdated = null;   // version we just updated to, shown once as "updated" in the UI
 function setAppUpdate(patch) { appUpdate = { ...appUpdate, ...patch }; broadcast({ type: 'appUpdate', appUpdate }); }
 
@@ -477,7 +479,8 @@ async function checkAppUpdate(manual = false) {
   setAppUpdate({ checking: true, error: null });
   try {
     const r = await updates.fetchLatest(net.fetch, app.getVersion());
-    setAppUpdate({ checking: false, checkedAt: Date.now(), latest: r.latest, available: r.available });
+    setAppUpdate({ checking: false, checkedAt: Date.now(), latest: r.latest, available: r.available, mode: updateMode() });
+    if (r.available && db.settings.autoDownload && updateMode() !== 'page') { downloadAppUpdate(); return appUpdate; }
     if (r.available && !manual && db.settings.notifiedVersion !== r.latest.version) {
       db.settings.notifiedVersion = r.latest.version; save();
       notify(`نسخه‌ی جدید Ember: ${r.latest.version}`, 'برای دانلود و نصب، تنظیمات ← بروزرسانی را باز کنید.', { type: 'openSettings', tab: 'updates' });
@@ -488,39 +491,105 @@ async function checkAppUpdate(manual = false) {
   return appUpdate;
 }
 
-async function installAppUpdate() {
-  const l = appUpdate.latest;
-  if (!l || appUpdate.downloading) return appUpdate;
-  // portable builds, dev runs and other platforms: just open the download page
-  if (process.platform !== 'win32' || !app.isPackaged || process.env.PORTABLE_EXECUTABLE_FILE || !l.setupUrl) {
-    shell.openExternal(process.env.PORTABLE_EXECUTABLE_FILE && l.portableUrl ? l.portableUrl : l.url);
-    return appUpdate;
-  }
+// How this copy of Ember can update itself:
+//   setup    - installed with Ember-Setup.exe: silent install (no wizard), then Ember opens again
+//   portable - Ember-Portable.exe: the exe is swapped in place, then Ember opens again
+//   page     - development run or another OS: open the release page
+const portableExe = () => process.env.PORTABLE_EXECUTABLE_FILE || null;
+function updateMode() {
+  if (process.platform !== 'win32' || !app.isPackaged) return 'page';
+  return portableExe() ? 'portable' : 'setup';
+}
+const updatesDir = () => path.join(app.getPath('userData'), 'updates');
+
+async function downloadAppUpdate() {
+  const l = appUpdate.latest, mode = updateMode();
+  if (!l || !appUpdate.available || appUpdate.downloading) return appUpdate;
+  if (appUpdate.ready && appUpdate.readyVersion === l.version) return appUpdate;
+  const url = mode === 'portable' ? l.portableUrl : mode === 'setup' ? l.setupUrl : null;
+  if (!url) return appUpdate;
   setAppUpdate({ downloading: true, progress: 0, error: null });
   try {
-    const res = await net.fetch(l.setupUrl);
+    const res = await net.fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const total = Number(res.headers.get('content-length')) || 0;
-    const file = path.join(app.getPath('temp'), `Ember-Setup-${l.version}.exe`);
-    const out = fs.createWriteStream(file);
+    fs.mkdirSync(updatesDir(), { recursive: true });
+    const file = path.join(updatesDir(), `Ember-${mode}-${l.version}.exe`);
+    const part = file + '.part';
+    const out = fs.createWriteStream(part);
+    const hash = crypto.createHash('sha256');
     const reader = res.body.getReader();
     let got = 0, lastSent = 0;
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      got += value.length;
-      if (!out.write(Buffer.from(value))) await new Promise((ok) => out.once('drain', ok));
+      const buf = Buffer.from(value);
+      got += buf.length; hash.update(buf);
+      if (!out.write(buf)) await new Promise((ok) => out.once('drain', ok));
       if (total && got - lastSent > total / 50) { lastSent = got; setAppUpdate({ progress: got / total }); }
     }
     await new Promise((ok, fail) => out.end((e) => (e ? fail(e) : ok())));
-    setAppUpdate({ progress: 1 });
-    spawn(file, [], { detached: true, stdio: 'ignore' }).unref();
-    quitting = true;
-    setTimeout(() => app.quit(), 500);
+    // compare with SHA256SUMS.txt of the release, so a broken or swapped download is never run
+    if (l.sumsUrl) {
+      const sums = await (await net.fetch(l.sumsUrl)).text();
+      const want = updates.expectedHash(sums, decodeURIComponent(url.split('/').pop()));
+      if (want && want !== hash.digest('hex')) { fs.rmSync(part, { force: true }); throw new Error('checksum mismatch'); }
+    }
+    fs.renameSync(part, file);
+    setAppUpdate({ downloading: false, progress: 1, ready: true, readyVersion: l.version, readyFile: file });
+    notify(`Ember ${l.version} آماده‌ی نصب است`, 'با «راه‌اندازی مجدد» در چند ثانیه نصب می‌شود؛ یا هنگام بستن Ember.', { type: 'openSettings', tab: 'updates' });
   } catch (e) {
     setAppUpdate({ downloading: false, error: 'دانلود ناموفق بود: ' + (e.message || e) });
   }
   return appUpdate;
+}
+
+let applyingUpdate = false;
+// restart = true: open Ember again right after; false: just install (Ember is closing anyway)
+function runUpdate(restart) {
+  const file = appUpdate.readyFile;
+  if (!file || !fs.existsSync(file) || applyingUpdate) return false;
+  applyingUpdate = true;
+  try {
+    if (updateMode() === 'portable') {
+      const exe = portableExe();
+      // Windows lets a running exe be renamed, so: move the old one aside, put the new one in its place
+      fs.rmSync(exe + '.old', { force: true });
+      fs.renameSync(exe, exe + '.old');
+      fs.copyFileSync(file, exe);
+      if (restart) spawn(exe, [], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
+    } else {
+      // electron-builder's installer: /S = no wizard, --force-run = start Ember when done
+      spawn(file, ['/S', '--updated', ...(restart ? ['--force-run'] : [])], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
+    }
+    return true;
+  } catch (e) {
+    applyingUpdate = false;
+    setAppUpdate({ error: 'نصب ناموفق بود: ' + (e.message || e) });
+    return false;
+  }
+}
+
+async function installAppUpdate() {
+  if (updateMode() === 'page') {
+    if (appUpdate.latest) shell.openExternal(appUpdate.latest.url);
+    return appUpdate;
+  }
+  if (!appUpdate.ready) await downloadAppUpdate();
+  if (appUpdate.ready && runUpdate(true)) { quitting = true; setTimeout(() => app.quit(), 300); }
+  return appUpdate;
+}
+
+function cleanUpdates() {
+  const exe = portableExe();
+  if (exe) fs.rm(exe + '.old', { force: true }, () => {});
+  fs.readdir(updatesDir(), (err, files) => {
+    if (err) return;
+    for (const f of files) {
+      const v = (f.match(/-(\d+\.\d+\.\d+(?:-[A-Za-z]+\.\d+)?)\.exe(\.part)?$/) || [])[1];
+      if (!v || f.endsWith('.part') || updates.compareVersions(v, app.getVersion()) <= 0) fs.rm(path.join(updatesDir(), f), { force: true }, () => {});
+    }
+  });
 }
 
 function scheduleChecks() {
@@ -586,7 +655,7 @@ ipcMain.handle('openData', () => shell.openPath(app.getPath('userData')));
 ipcMain.handle('openFolder', (_, id) => { const p = db.projects.find((x) => x.id === id); if (p) shell.openPath(p.path); });
 ipcMain.handle('settings', () => settingsOut());
 ipcMain.handle('setSettings', (_, s) => {
-  for (const k of ['remote', 'checkUpdates', 'watchProjects', 'fetchRemote', 'notify', 'tray', 'autostart']) {
+  for (const k of ['remote', 'checkUpdates', 'watchProjects', 'fetchRemote', 'notify', 'tray', 'autostart', 'autoDownload', 'installOnQuit']) {
     if (typeof s[k] === 'boolean') db.settings[k] = s[k];
   }
   if (Number.isFinite(s.fetchMinutes)) db.settings.fetchMinutes = Math.min(240, Math.max(5, Math.round(s.fetchMinutes)));
@@ -601,6 +670,7 @@ ipcMain.handle('markTested', (_, id) => { const p = db.projects.find((x) => x.id
 ipcMain.handle('pull', (_, id) => pullProject(id));
 ipcMain.handle('checkAppUpdate', () => checkAppUpdate(true));
 ipcMain.handle('installAppUpdate', () => installAppUpdate());
+ipcMain.handle('downloadAppUpdate', () => downloadAppUpdate());
 ipcMain.handle('dismissJustUpdated', () => { justUpdated = null; });
 
 /* ---------- window ---------- */
@@ -621,6 +691,10 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 app.on('second-instance', () => showWindow());
 app.setAppUserModelId('app.ember.launcher');   // Windows notifications need it
-app.whenReady().then(() => { if (!gotLock) return; nativeTheme.themeSource = 'dark'; load(); noteVersion(); createWindow(); applyRemote(); applyTray(); applyAutostart(); scheduleChecks(); });
-app.on('before-quit', () => { quitting = true; procs.forEach((st) => st.child && killTree(st.child.pid)); });
+app.whenReady().then(() => { if (!gotLock) return; nativeTheme.themeSource = 'dark'; load(); noteVersion(); cleanUpdates(); createWindow(); applyRemote(); applyTray(); applyAutostart(); scheduleChecks(); });
+app.on('before-quit', () => {
+  quitting = true;
+  procs.forEach((st) => st.child && killTree(st.child.pid));
+  if (appUpdate.ready && db && db.settings.installOnQuit) runUpdate(false);   // a downloaded update installs quietly on exit
+});
 app.on('window-all-closed', () => { if (!tray) app.quit(); });

@@ -9,7 +9,7 @@ contextBridge.exposeInMainWorld('ember', {
   categories: call('categories'), setCategories: call('setCategories'),
   settings: call('settings'), setSettings: call('setSettings'),
   checkProjects: call('checkProjects'), markTested: call('markTested'), pull: call('pull'),
-  checkAppUpdate: call('checkAppUpdate'), installAppUpdate: call('installAppUpdate'),
+  checkAppUpdate: call('checkAppUpdate'), installAppUpdate: call('installAppUpdate'), downloadAppUpdate: call('downloadAppUpdate'),
   dismissJustUpdated: call('dismissJustUpdated'),
   onEvent: (cb) => ipcRenderer.on('evt', (_, e) => cb(e)),
 });

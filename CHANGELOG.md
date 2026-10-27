@@ -5,6 +5,8 @@ Release builds are published automatically from `main`. See the
 
 ## 1.0
 
+- Updates download in the background, are checked against the release's SHA256SUMS.txt and install silently (no setup wizard); Ember opens again by itself. Or they install when Ember closes. The portable exe swaps itself in place.
+- Category editor: names and icons save as you type, and moving to the next field no longer loses the click. The icon picker has 8 groups (about 400 emoji) plus any emoji or text you type.
 - Each project gets its own port; a busy port moves to the next free one (`--port` / `-p` for known dev servers, `PORT` for the rest). The port shows on the card and can be set in ✎.
 - On Windows the top bar is the title bar, in the app's colours.
 - Rename a project by double-clicking its name. ✎ moved to the card's corner, 📂 next to the path.

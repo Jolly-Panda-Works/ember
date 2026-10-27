@@ -184,14 +184,24 @@ dialog.settings[open]{display:flex}
 .valRow{padding-inline-start:24px}
 .catBox input{flex:1;min-width:0;margin:0!important;background:var(--field);color:var(--text);border:1px solid transparent;border-radius:9px;padding:6px 10px!important}
 .catHead input[data-f=name]{font-weight:700}
-.catBox input.ico{flex:none;width:44px;text-align:center;padding:6px 0!important;font-family:"Segoe UI Emoji","Segoe UI",sans-serif}
+.icoBtn{flex:none;width:44px;height:34px;display:grid;place-items:center;background:var(--field);border:1px solid transparent;border-radius:9px;cursor:pointer;font-size:18px;font-family:"Segoe UI Emoji","Segoe UI",sans-serif}
+.icoBtn:hover{border-color:var(--o)}
 .catBox .btn{padding:5px 10px}
 .catBox .n{color:var(--faint);font-size:12px;min-width:20px;text-align:center}
 .catAll{padding-inline-start:24px;color:var(--faint);font-size:12px}
-#emojiPick{position:fixed;z-index:5;width:250px;display:grid;grid-template-columns:repeat(8,1fr);gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px;box-shadow:0 8px 24px #000a}
+#emojiPick{position:fixed;z-index:5;width:340px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px;box-shadow:0 10px 30px #000c}
 #emojiPick[hidden]{display:none}
-#emojiPick button{background:none;border:0;font-size:18px;padding:3px;border-radius:6px;cursor:pointer}
+#emojiPick button{background:none;border:0;cursor:pointer;border-radius:7px;font-family:"Segoe UI Emoji","Segoe UI",sans-serif}
+.epTabs{display:flex;gap:2px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.epTabs button{flex:1;font-size:17px;padding:4px 0;opacity:.6}
+.epTabs button.on{opacity:1;background:var(--panel-h)}
+.epName{color:var(--muted);font-size:12px;margin:6px 2px 4px}
+.epGrid{display:grid;grid-template-columns:repeat(9,1fr);gap:2px;max-height:200px;overflow:auto}
+.epGrid button{font-size:20px;padding:3px 0}
 #emojiPick button:hover{background:var(--panel-h)}
+.epCustom{display:flex;gap:6px;margin-top:8px}
+.epCustom input{flex:1;min-width:0;margin:0!important;padding:6px 10px!important}
+.epCustom .btn{padding:4px 12px}
 
 /* the phone remote serves this same page */
 .remote .local{display:none!important}

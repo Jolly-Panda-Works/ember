@@ -256,76 +256,115 @@ $('#eRemove').onclick = async () => {
 };
 
 /* ---- category manager (settings → categories) ---- */
-const EMOJI = '🌐🎮📱🖥️⚙️📦🏢👤🏠💼🛒🎨🎵🎬📚🧪🤖💡🔥⭐❤️✅🚧🧊🟢🟡🔴🔵🟣⚪📁🧩🚀🐼🏷️'.match(/\p{Extended_Pictographic}️?/gu);
+// Typing only changes the data and saves a moment later; the editor is rebuilt only when rows
+// are added or removed, so a click into the next field is never lost.
+const EMOJI_GROUPS = [
+  ['😀', 'چهره و آدم‌ها', '😀😃😄😁😆😅😂🤣😊😇🙂😉😍🥰😘😎🤓🧐🤔🤩🥳😏😴🤯😱🤠🥸😈👻💀🤖👽👾💩🙈👋👍👎👏🙌🤝💪🧠👀👤👥🧑‍💻👨‍💻👩‍💻🧑‍🎨🧑‍🏫🧑‍💼🧑‍🔬🧑‍🚀🧙🦸🥷👑'],
+  ['🐼', 'حیوانات و طبیعت', '🐼🐶🐱🦊🐻🐨🐯🦁🐮🐷🐸🐵🐔🐧🐦🦉🦄🐝🦋🐢🐍🦖🐉🐙🦀🐠🐬🐳🦈🌵🌲🌳🌴🌱🍀🍁🌸🌹🌻🌈☀️🌙⭐🌟✨⚡🔥💧🌊❄️☁️🌍'],
+  ['🍕', 'غذا', '🍎🍊🍋🍌🍉🍇🍓🍒🍑🥑🥕🌽🍞🧀🍔🍟🍕🌭🌮🍣🍜🍩🍪🎂🍰🍫🍿☕🍵🧃🍺🍷'],
+  ['🎮', 'بازی و سرگرمی', '🎮🕹️🎲♟️🧩🎯🎳🏆🥇🏅⚽🏀🏈⚾🎾🏐🏓🥊⛳🏁🎨🎭🎬🎤🎧🎵🎹🎸🥁🎻📷🎥🪄🃏'],
+  ['🏠', 'مکان و سفر', '🏠🏡🏢🏬🏭🏫🏥🏦🏪🏛️⛪🕌🏰🗼🗽🌆🏙️🌉🚗🚕🚌🚀✈️🚁🚢⛵🚲🛴🚦🗺️🧭⛺🏖️🏔️🌋'],
+  ['💼', 'کار و اشیا', '💼📁📂🗂️📊📈📉📋📌📎✏️🖊️📝📚📖🔖🏷️💡🔦🔧🔨⚙️🛠️🧪🔬🔭💻🖥️⌨️🖱️📱☎️📡🔋🔌💾💿📦🛒💳💰💎🔑🔒🔓🔔📣✉️📅⏰⌛🧲🧰🌐🔗🗄️🧾'],
+  ['❤️', 'نماد و رنگ', '❤️🧡💛💚💙💜🖤🤍🤎💔✅☑️✔️❌⭕❗❓⚠️🚫⛔🔴🟠🟡🟢🔵🟣🟤⚫⚪🟥🟧🟨🟩🟦🟪⬛⬜🔶🔷🔺🔻💠🔘♻️⚜️🆕🆗🆙🆒🆓🔝🔜💯🔤#️⃣1️⃣2️⃣3️⃣4️⃣5️⃣🅰️🅱️'],
+  ['🏳️', 'پرچم', '🇮🇷🇺🇸🇬🇧🇩🇪🇫🇷🇹🇷🇦🇪🇨🇦🇯🇵🇨🇳🇮🇳🇷🇺🇮🇹🇪🇸🇳🇱🇸🇪🇦🇺🇧🇷🇰🇷🇦🇫🇮🇶🇸🇦🏳️🏴🏁🚩'],
+].map(([tab, name, list]) => ({ tab, name, list: [...new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(list)].map((x) => x.segment) }));
+
 function renderCats() {
   const used = (cid, vid) => items.filter((i) => (i.cats || {})[cid] === vid).length;
   $('#catList').innerHTML = cats.map((c, ci) => `<div class="catBox" data-ci="${ci}">
       <div class="catHead">
-        <input class="ico" data-f="icon" value="${esc(c.icon)}" title="آیکون">
-        <input data-f="name" value="${esc(c.name)}" placeholder="نام دسته‌بندی">
+        <button type="button" class="icoBtn" data-f="icon" title="انتخاب آیکون">${esc(c.icon)}</button>
+        <input data-f="name" value="${esc(c.name)}" placeholder="نام دسته‌بندی" maxlength="40">
         <button class="btn ghost" data-c="delCat" title="حذف دسته‌بندی">🗑</button>
       </div>
       <div class="catAll">✦ همه — خودکار، همیشه اول لیست</div>
       ${c.values.map((v, vi) => `<div class="valRow" data-vi="${vi}">
-        <input class="ico" data-vf="icon" value="${esc(v.icon)}" title="آیکون">
-        <input data-vf="name" value="${esc(v.name)}" placeholder="نام">
+        <button type="button" class="icoBtn" data-vf="icon" title="انتخاب آیکون">${esc(v.icon)}</button>
+        <input data-vf="name" value="${esc(v.name)}" placeholder="نام" maxlength="40">
         <span class="n" title="تعداد پروژه">${used(c.id, v.id)}</span>
         <button class="btn ghost" data-c="delVal" title="حذف">✕</button></div>`).join('')}
       <button class="btn ghost" data-c="addVal">＋ مقدار جدید</button>
     </div>`).join('') || '<p class="hint">هیچ دسته‌بندی‌ای نیست.</p>';
 }
-async function saveCats(focus) {
-  cats = await api.setCategories(cats);
+// the object (category or value) an input/icon button in the editor belongs to
+function catTarget(el) {
+  const box = el.closest('.catBox'); if (!box) return null;
+  const c = cats[box.dataset.ci];
+  if (el.dataset.f) return { obj: c, key: el.dataset.f };
+  const row = el.closest('.valRow');
+  return row ? { obj: c.values[row.dataset.vi], key: el.dataset.vf } : null;
+}
+let catTimer = null;
+function queueCatSave() { clearTimeout(catTimer); catTimer = setTimeout(() => saveCats(false), 500); }
+async function saveCats(rebuild, focus) {
+  clearTimeout(catTimer); catTimer = null;
+  const saved = await api.setCategories(cats);
+  // keep the objects being edited, just take the ids the app assigned
+  saved.forEach((c, i) => { if (cats[i]) { cats[i].id = c.id; c.values.forEach((v, j) => { if (cats[i].values[j]) cats[i].values[j].id = v.id; }); } });
   items = await api.list();
-  render(); renderCats();
+  render();
+  if (rebuild) renderCats();
   if (focus) { const el = document.querySelector(focus); if (el) { el.focus(); el.select(); } }
 }
-$('#catList').onchange = (e) => {
-  const box = e.target.closest('.catBox'); if (!box) return;
-  const c = cats[box.dataset.ci];
-  if (e.target.dataset.f) c[e.target.dataset.f] = e.target.value;
-  else if (e.target.dataset.vf) c.values[e.target.closest('.valRow').dataset.vi][e.target.dataset.vf] = e.target.value;
-  saveCats();
-};
+$('#catList').addEventListener('input', (e) => {
+  const t = catTarget(e.target); if (!t) return;
+  t.obj[t.key] = e.target.value;
+  queueCatSave();
+});
 $('#catList').onclick = (e) => {
+  const ib = e.target.closest('.icoBtn');
+  if (ib) return openPicker(ib);
   const b = e.target.closest('[data-c]'); if (!b) return;
   const ci = Number(b.closest('.catBox').dataset.ci), c = cats[ci];
   if (b.dataset.c === 'addVal') {
-    c.values.push({ icon: '•', name: 'مقدار جدید' });
-    saveCats(`.catBox[data-ci="${ci}"] .valRow:last-of-type [data-vf=name]`);
+    c.values.push({ icon: '🔹', name: 'مقدار جدید' });
+    saveCats(true, `.catBox[data-ci="${ci}"] .valRow:last-of-type [data-vf=name]`);
   } else if (b.dataset.c === 'delVal') {
     const v = c.values[b.closest('.valRow').dataset.vi];
     const n = items.filter((i) => (i.cats || {})[c.id] === v.id).length;
     if (n && !confirm(`«${v.name}» به ${n} پروژه داده شده. حذف شود؟`)) return;
-    c.values = c.values.filter((x) => x !== v); saveCats();
+    c.values = c.values.filter((x) => x !== v); saveCats(true);
   } else if (b.dataset.c === 'delCat') {
     if (!confirm(`دسته‌بندی «${c.name}» و همه‌ی مقادیرش حذف شود؟ (پروژه‌ها حذف نمی‌شوند)`)) return;
-    cats.splice(ci, 1); delete filter.cats[c.id]; saveCats();
+    cats.splice(ci, 1); delete filter.cats[c.id]; saveCats(true);
   }
 };
 $('#addCat').onclick = () => {
   cats.push({ icon: '🏷️', name: 'دسته‌بندی جدید', values: [] });
-  saveCats('.catBox:last-of-type [data-f=name]');
+  saveCats(true, '.catBox:last-of-type [data-f=name]');
 };
-// emoji palette for the icon fields
+
+// emoji picker: groups as tabs, plus any emoji or text you type yourself
 const pick = $('#emojiPick');
-pick.innerHTML = EMOJI.map((x) => `<button type="button">${x}</button>`).join('');
-let pickFor = null;
-$('#catList').addEventListener('focusin', (e) => {
-  if (!e.target.classList.contains('ico')) return;
-  pickFor = e.target;
-  pick.hidden = false;
-  const r = e.target.getBoundingClientRect(), h = pick.offsetHeight;
-  pick.style.top = `${r.bottom + h + 8 > innerHeight ? r.top - h - 4 : r.bottom + 4}px`;   // above the field when no room below
-  pick.style.left = `${Math.max(8, r.right - pick.offsetWidth)}px`;
-});
-$('#catList').addEventListener('focusout', () => setTimeout(() => { if (document.activeElement !== pickFor) pick.hidden = true; }, 150));
-pick.onmousedown = (e) => {
-  e.preventDefault();
-  const b = e.target.closest('button'); if (!b || !pickFor) return;
-  pickFor.value = b.textContent; pick.hidden = true;
-  pickFor.dispatchEvent(new Event('change', { bubbles: true }));
+let pickFor = null, pickGroup = 0;
+function renderPicker() {
+  pick.innerHTML = `<div class="epTabs">${EMOJI_GROUPS.map((g, i) => `<button type="button" data-g="${i}" class="${i === pickGroup ? 'on' : ''}" title="${g.name}">${g.tab}</button>`).join('')}</div>
+    <div class="epName">${EMOJI_GROUPS[pickGroup].name}</div>
+    <div class="epGrid">${EMOJI_GROUPS[pickGroup].list.map((x) => `<button type="button" data-e="${esc(x)}">${x}</button>`).join('')}</div>
+    <form class="epCustom"><input placeholder="یا ایموجی یا حرف دلخواه (Win + .)" maxlength="16"><button class="btn" type="submit">✓</button></form>`;
+}
+function openPicker(btn) {
+  pickFor = btn; renderPicker(); pick.hidden = false;
+  const r = btn.getBoundingClientRect(), h = pick.offsetHeight, w = pick.offsetWidth;
+  pick.style.top = `${Math.max(8, r.bottom + h + 8 > innerHeight ? r.top - h - 4 : r.bottom + 4)}px`;   // above when no room below
+  pick.style.left = `${Math.min(innerWidth - w - 8, Math.max(8, r.right - w))}px`;
+}
+function applyIcon(icon) {
+  icon = String(icon || '').trim(); if (!icon || !pickFor) return;
+  const t = catTarget(pickFor); if (!t) return;
+  t.obj[t.key] = icon; pickFor.textContent = icon; pick.hidden = true;
+  saveCats(false);
+}
+pick.onclick = (e) => {
+  const g = e.target.closest('[data-g]');
+  if (g) { pickGroup = Number(g.dataset.g); renderPicker(); return; }
+  const em = e.target.closest('[data-e]');
+  if (em) applyIcon(em.dataset.e);
 };
+pick.onsubmit = (e) => { e.preventDefault(); applyIcon(pick.querySelector('.epCustom input').value); };
+document.addEventListener('mousedown', (e) => { if (!pick.hidden && !pick.contains(e.target) && !e.target.closest('.icoBtn')) pick.hidden = true; });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pick.hidden) { e.preventDefault(); e.stopPropagation(); pick.hidden = true; } }, true);
+$('#setDlg').addEventListener('close', () => { if (catTimer) saveCats(false); pick.hidden = true; });
 
 /* ---- settings dialog ---- */
 let settings = null;
@@ -352,19 +391,23 @@ function renderAppUpdate() {
   if (!settings) return;
   const u = settings.appUpdate || {};
   const avail = !!(u.available && u.latest);
+  const ready = avail && u.ready;
+  const page = settings.updateMode === 'page';
   $('#settingsDot').hidden = !avail; $('#tabDot').hidden = !avail;
   let st;
-  if (u.downloading) st = `در حال دانلود نسخه‌ی ${u.latest.version}… ${Math.round((u.progress || 0) * 100)}٪`;
+  if (u.downloading) st = `در حال دانلود نسخه‌ی ${esc(u.latest.version)} در پس‌زمینه… ${Math.round((u.progress || 0) * 100)}٪`;
   else if (u.checking) st = 'در حال بررسی…';
   else if (u.error) st = `<span class="bad">⚠ ${esc(u.error)}</span>`;
-  else if (avail) st = `<span class="warn">نسخه‌ی جدید <code>${esc(u.latest.version)}</code> آماده است</span> <small class="hint">(${fmtDate(u.latest.publishedAt)})</small>`;
+  else if (ready) st = `<span class="ok">✓ نسخه‌ی <code>${esc(u.readyVersion)}</code> دانلود و بررسی شد و آماده‌ی نصب است.</span>`;
+  else if (avail) st = `<span class="warn">نسخه‌ی جدید <code>${esc(u.latest.version)}</code> موجود است</span> <small class="hint">(${fmtDate(u.latest.publishedAt)})</small>`;
   else if (u.checkedAt) st = `<span class="ok">✓ آخرین نسخه را دارید.</span> <small class="hint">آخرین بررسی: ${ago(u.checkedAt)}</small>`;
   else st = 'هنوز بررسی نشده.';
   $('#uStatus').innerHTML = st;
   $('#uProgress').hidden = !u.downloading;
   $('#uProgress i').style.width = `${Math.round((u.progress || 0) * 100)}%`;
   $('#uInstall').hidden = !avail || u.downloading;
-  $('#uInstall').textContent = settings.portable ? '⬇ دانلود نسخه‌ی پرتابل' : '⬇ دانلود و نصب';
+  $('#uInstall').textContent = page ? '⬇ صفحه‌ی دانلود' : ready ? '🔄 نصب و راه‌اندازی مجدد' : '⬇ دانلود و نصب';
+  $('#uHow').hidden = !avail || page;
   $('#uCheck').disabled = u.checking || u.downloading;
   $('#uNotes').hidden = !avail || !u.latest.notes;
   if (avail) $('#uNotes').textContent = u.latest.notes;
@@ -375,12 +418,19 @@ function renderBanners() {
   const u = settings.appUpdate || {};
   let h = '';
   if (settings.justUpdated) h += `<div class="banner ok">✨ Ember به نسخه‌ی <code>${esc(settings.justUpdated)}</code> بروز شد — امتحانش کنید! <button class="btn ghost" data-banner="notes">تغییرات</button><button class="btn ghost" data-banner="dismiss">✕</button></div>`;
-  if (u.available && u.latest && !u.downloading) h += `<div class="banner">⬆️ نسخه‌ی جدید Ember (<code>${esc(u.latest.version)}</code>) آماده است. <button class="btn primary" data-banner="update">مشاهده و نصب</button></div>`;
+  if (u.available && u.latest && u.ready) h += `<div class="banner">⬆️ نسخه‌ی <code>${esc(u.readyVersion)}</code> آماده‌ی نصب است. چند ثانیه طول می‌کشد؛ یا خودکار هنگام بستن Ember نصب می‌شود. <button class="btn primary" data-banner="restart">راه‌اندازی مجدد و بروزرسانی</button></div>`;
+  else if (u.available && u.latest && !u.downloading) h += `<div class="banner">⬆️ نسخه‌ی جدید Ember (<code>${esc(u.latest.version)}</code>) موجود است. <button class="btn primary" data-banner="update">مشاهده و نصب</button></div>`;
   $('#banners').innerHTML = h;
+}
+async function restartForUpdate() {
+  const run = items.filter((i) => i.status !== 'stopped').length;
+  if (run && !confirm(`${run} پروژه در حال اجراست و با راه‌اندازی مجدد متوقف می‌شود. ادامه؟`)) return;
+  settings.appUpdate = await api.installAppUpdate(); renderAppUpdate();
 }
 $('#banners').onclick = (e) => {
   const b = e.target.closest('[data-banner]'); if (!b) return;
   if (b.dataset.banner === 'update') openSettings('updates');
+  else if (b.dataset.banner === 'restart') restartForUpdate();
   else if (b.dataset.banner === 'notes') api.openUrl(`${settings.repo}/releases/tag/v${settings.justUpdated}`);
   else if (b.dataset.banner === 'dismiss') { settings.justUpdated = null; api.dismissJustUpdated(); renderBanners(); }
 };
@@ -410,7 +460,7 @@ $('#sCheckProjects').onclick = async (e) => {
   e.target.disabled = false;
 };
 $('#uCheck').onclick = async () => { settings.appUpdate = await api.checkAppUpdate(); renderAppUpdate(); };
-$('#uInstall').onclick = async () => { settings.appUpdate = await api.installAppUpdate(); renderAppUpdate(); };
+$('#uInstall').onclick = () => restartForUpdate();
 $('#uPage').onclick = () => api.openUrl(`${settings.repo}/releases`);
 $('#rPin').onclick = () => saveSettings({ regenPin: true });
 $('#rApk').onclick = () => api.openUrl(`${settings.repo}/releases/latest/download/Ember-Remote.apk`);

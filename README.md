@@ -29,7 +29,7 @@
 | **"Updated — test it" badge** | When a project changed since you last ran it in Ember (a new commit, or newer files for folders without git), its card gets a 🆕 badge and a Windows notification. Running it (or *✓ Tested*) clears the badge. |
 | **New commits on GitHub** | Ember runs `git fetch` every few minutes (default 15). Commits you have not pulled yet show as *⬇ N new commits* with a **Pull** button (`git pull --ff-only`). |
 | **Settings** | General (notifications, stay in tray, start with Windows), categories, project updates, Ember updates, phone access, About. |
-| **Updates itself** | Checks GitHub Releases on start and every 6 hours. *Download and install* fetches the new installer and runs it. After an update, a banner says what changed. |
+| **Updates itself** | Checks GitHub Releases on start and every 6 hours and downloads a new version in the background (verified against `SHA256SUMS.txt`). *Restart and update* installs it silently, with no setup wizard, and Ember opens again a few seconds later; or it installs when you close Ember. The portable exe swaps itself in place. |
 | **Phone remote** | The *Ember Remote* APK starts and stops projects from your phone over Wi-Fi (PIN protected, local network only). |
 
 ## Download

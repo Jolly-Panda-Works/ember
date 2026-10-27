@@ -121,6 +121,7 @@
         <div id="uStatus"></div>
         <div id="uProgress" class="progress" hidden><i></i></div>
         <div id="uNotes" class="notes" hidden></div>
+        <p id="uHow" class="hint" hidden>نصب بی‌صدا انجام می‌شود (بدون پنجره‌ی Setup) و Ember چند ثانیه بعد خودش دوباره باز می‌شود. تنظیمات و پروژه‌ها سر جایشان می‌مانند.</p>
         <div class="dlgRow">
           <button class="btn primary" id="uInstall" hidden>⬇ دانلود و نصب</button>
           <button class="btn" id="uCheck">🔍 بررسی بروزرسانی</button>
@@ -130,6 +131,8 @@
       <div class="box">
         <div class="sec">خودکار</div>
         <label class="switch"><input type="checkbox" data-set="checkUpdates"><span>بررسی خودکار نسخه‌ی جدید<small>هنگام شروع و هر ۶ ساعت از GitHub Releases. هر پوش به main یک نسخه‌ی جدید با شماره‌ی خودکار منتشر می‌کند.</small></span></label>
+        <label class="switch"><input type="checkbox" data-set="autoDownload"><span>دانلود خودکار در پس‌زمینه<small>نسخه‌ی جدید بی‌صدا دانلود و با SHA256 بررسی می‌شود؛ کار شما قطع نمی‌شود.</small></span></label>
+        <label class="switch"><input type="checkbox" data-set="installOnQuit"><span>نصب هنگام بستن Ember<small>اگر «راه‌اندازی مجدد» را نزنید، دفعه‌ی بعد که Ember را می‌بندید بی‌صدا نصب می‌شود.</small></span></label>
       </div>
     </section>
 

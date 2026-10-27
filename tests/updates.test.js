@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { compareVersions, pickRelease, fetchLatest } = require('../updates');
+const { compareVersions, pickRelease, fetchLatest, expectedHash } = require('../updates');
 
 test('compareVersions orders releases and dev builds', () => {
   assert.ok(compareVersions('1.0.42', '1.0.41') > 0);
@@ -33,4 +33,12 @@ test('fetchLatest reports an available update', async () => {
   assert.strictEqual((await fetchLatest(fake, '1.0.9')).available, false);
   const none = async () => ({ ok: false, status: 404 });
   assert.deepStrictEqual(await fetchLatest(none, '1.0.0'), { latest: null, available: false });
+});
+
+test('expectedHash reads SHA256SUMS.txt', () => {
+  const h = 'a'.repeat(64), g = 'b'.repeat(64);
+  const sums = `${h}  Ember-Setup.exe\r\n${g}  Ember-Portable.exe\n`;
+  assert.strictEqual(expectedHash(sums, 'Ember-Portable.exe'), g);
+  assert.strictEqual(expectedHash(sums, 'Ember-Setup.exe'), h);
+  assert.strictEqual(expectedHash(sums, 'other.exe'), null);
 });

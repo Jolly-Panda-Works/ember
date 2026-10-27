@@ -34,7 +34,17 @@ function pickRelease(json) {
     setupUrl: find(/setup.*\.exe$/i),
     portableUrl: find(/portable.*\.exe$/i),
     apkUrl: find(/\.apk$/i),
+    sumsUrl: find(/^SHA256SUMS\.txt$/i),
   };
+}
+
+// the hash of `name` in a SHA256SUMS.txt ("<hash>  <name>" per line), or null
+function expectedHash(sums, name) {
+  for (const line of String(sums).split(/\r?\n/)) {
+    const m = line.trim().match(/^([0-9a-f]{64})\s+\*?(.+)$/i);
+    if (m && m[2].trim() === name) return m[1].toLowerCase();
+  }
+  return null;
 }
 
 async function fetchLatest(fetchFn, current) {
@@ -45,4 +55,4 @@ async function fetchLatest(fetchFn, current) {
   return { latest, available: !!latest && compareVersions(latest.version, current) > 0 };
 }
 
-module.exports = { REPO, REPO_URL, parseVersion, compareVersions, pickRelease, fetchLatest };
+module.exports = { REPO, REPO_URL, parseVersion, compareVersions, pickRelease, fetchLatest, expectedHash };
