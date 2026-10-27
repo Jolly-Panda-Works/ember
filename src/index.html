@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ember</title>
+<link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<aside>
+  <div class="brand"><img src="icon.svg" alt=""><div><b>Ember</b><small>اخگر</small></div></div>
+  <button id="add" class="btn primary wide local">＋ افزودن پوشه پروژه</button>
+  <div class="group"><h4>نوع پروژه</h4><div id="types"></div></div>
+  <div class="group"><h4>کارفرما</h4><div id="clients"></div></div>
+  <button id="remoteBtn" class="btn ghost wide local">📱 دسترسی از موبایل</button>
+</aside>
+
+<main>
+  <header>
+    <input id="q" type="search" placeholder="جستجوی پروژه، کارفرما یا مسیر…">
+    <span id="stats"></span>
+  </header>
+  <section id="grid"></section>
+  <section id="logPanel" hidden>
+    <div class="logHead"><b id="logTitle"></b><button class="btn ghost" id="logClose">✕</button></div>
+    <pre id="log"></pre>
+  </section>
+</main>
+
+<dialog id="editDlg">
+  <h3>ویرایش پروژه</h3>
+  <label>نام<input id="eName"></label>
+  <label>نوع
+    <select id="eType">
+      <option value="web">وب‌سایت</option><option value="game">بازی</option><option value="mobile">موبایل</option>
+      <option value="desktop">دسکتاپ</option><option value="api">بک‌اند / API</option><option value="other">سایر</option>
+    </select>
+  </label>
+  <label>کارفرما / شرکت<input id="eClient" list="clientList" placeholder="مثلاً شرکت آلفا یا شخصی"></label>
+  <datalist id="clientList"></datalist>
+  <div class="dlgActions">
+    <button class="btn danger" id="eRemove">حذف از لیست</button>
+    <span style="flex:1"></span>
+    <button class="btn ghost" id="eCancel">انصراف</button>
+    <button class="btn primary" id="eSave">ذخیره</button>
+  </div>
+</dialog>
+
+<dialog id="remoteDlg">
+  <h3>دسترسی از موبایل</h3>
+  <label class="check"><input type="checkbox" id="rOn"> فعال‌سازی (فقط در شبکه محلی)</label>
+  <div id="rInfo" class="info"></div>
+  <p class="hint">اپ Ember Remote (APK) را باز کنید، آی‌پی و PIN را وارد کنید. برای تست پروژه روی گوشی، سرور dev باید روی همه‌ی کارت‌های شبکه گوش دهد (مثلاً <code>vite --host</code>) و فایروال ویندوز اجازه بدهد.</p>
+  <div class="dlgActions">
+    <button class="btn ghost" id="rPin">PIN جدید</button>
+    <span style="flex:1"></span>
+    <button class="btn primary" id="rClose">بستن</button>
+  </div>
+</dialog>
+<script src="app.js"></script>
+</body>
+</html>

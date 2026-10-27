@@ -1,0 +1,36 @@
+{
+  "name": "ember",
+  "productName": "Ember",
+  "version": "1.0.0",
+  "description": "Ember - launcher for your Node projects",
+  "main": "main.js",
+  "author": "you",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --publish never"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "app.ember.launcher",
+    "productName": "Ember",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.js", "preload.js", "src/**/*", "package.json"],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Ember-Setup-${version}.${ext}"
+    },
+    "portable": { "artifactName": "Ember-Portable-${version}.${ext}" }
+  }
+}
