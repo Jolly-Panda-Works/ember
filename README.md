@@ -23,10 +23,10 @@
 | **Find projects** | Add one project folder, or a folder full of projects. Every `package.json` with a runnable script shows up as a card. |
 | **Install only when needed** | Ember runs `npm` / `pnpm` / `yarn` / `bun install` only when `node_modules` is missing or older than the lock file. |
 | **One click to run** | Pick the script, press ▶. The local URL is detected from the output and opens with 🔗. Live log in the bottom panel. |
-| **Group and search** | By type (website, game, mobile, desktop, API) and by client. |
+| **Your own categories** | Out of the box there is one category, *Project type* (website, game, mobile, desktop, API, other). Add, rename or delete categories (client, status, …) and their values, each with an icon and a name, in ⚙️ Settings → *Categories*. Filter by any of them in the sidebar; search matches them too. |
 | **"Updated — test it" badge** | When a project changed since you last ran it in Ember (a new commit, or newer files for folders without git), its card gets a 🆕 badge and a Windows notification. Running it (or *✓ Tested*) clears the badge. |
 | **New commits on GitHub** | Ember runs `git fetch` every few minutes (default 15). Commits you have not pulled yet show as *⬇ N new commits* with a **Pull** button (`git pull --ff-only`). |
-| **Settings** | General (notifications, stay in tray, start with Windows), project updates, Ember updates, phone access, About. |
+| **Settings** | General (notifications, stay in tray, start with Windows), categories, project updates, Ember updates, phone access, About. |
 | **Updates itself** | Checks GitHub Releases on start and every 6 hours. *Download and install* fetches the new installer and runs it. After an update, a banner says what changed. |
 | **Phone remote** | The *Ember Remote* APK starts and stops projects from your phone over Wi-Fi (PIN protected, local network only). |
 

@@ -11,8 +11,7 @@
 <aside>
   <div class="brand"><img src="icon.svg" alt=""><div><b>Ember</b><small>اخگر</small></div></div>
   <button id="add" class="btn primary wide local">＋ افزودن پوشه پروژه</button>
-  <div class="group"><h4>نوع پروژه</h4><div id="types"></div></div>
-  <div class="group"><h4>کارفرما</h4><div id="clients"></div></div>
+  <div id="groups"></div>
   <div class="foot local">
     <button id="remoteBtn" class="btn ghost wide">📱 دسترسی از موبایل</button>
     <button id="settingsBtn" class="btn ghost wide">⚙️ تنظیمات<span id="settingsDot" class="badgeDot" hidden title="نسخه‌ی جدید موجود است"></span></button>
@@ -21,7 +20,7 @@
 
 <main>
   <header>
-    <input id="q" type="search" placeholder="جستجوی پروژه، کارفرما یا مسیر…">
+    <input id="q" type="search" placeholder="جستجوی پروژه، دسته‌بندی یا مسیر…">
     <span id="stats"></span>
   </header>
   <div id="banners"></div>
@@ -35,14 +34,7 @@
 <dialog id="editDlg">
   <h3>ویرایش پروژه</h3>
   <label>نام<input id="eName"></label>
-  <label>نوع
-    <select id="eType">
-      <option value="web">وب‌سایت</option><option value="game">بازی</option><option value="mobile">موبایل</option>
-      <option value="desktop">دسکتاپ</option><option value="api">بک‌اند / API</option><option value="other">سایر</option>
-    </select>
-  </label>
-  <label>کارفرما / شرکت<input id="eClient" list="clientList" placeholder="مثلاً شرکت آلفا یا شخصی"></label>
-  <datalist id="clientList"></datalist>
+  <div id="eCats"></div>
   <div class="dlgActions">
     <button class="btn danger" id="eRemove">حذف از لیست</button>
     <span style="flex:1"></span>
@@ -55,6 +47,7 @@
   <nav id="setTabs">
     <h3>تنظیمات</h3>
     <button class="nav" data-tab="general">🧩 عمومی</button>
+    <button class="nav" data-tab="cats">🏷️ دسته‌بندی‌ها</button>
     <button class="nav" data-tab="projects">🆕 بروزرسانی پروژه‌ها</button>
     <button class="nav" data-tab="updates">⬆️ بروزرسانی Ember<span id="tabDot" class="badgeDot" hidden></span></button>
     <button class="nav" data-tab="remote">📱 دسترسی از موبایل</button>
@@ -67,6 +60,13 @@
       <label class="switch"><input type="checkbox" data-set="tray"><span>با بستن پنجره در System Tray بماند<small>تا پروژه‌ها اجرا بمانند و اعلان‌ها برسند. خروج کامل از منوی آیکون کنار ساعت.</small></span></label>
       <label class="switch"><input type="checkbox" data-set="autostart"><span>اجرا همراه ویندوز<small>فقط در نسخه‌ی نصب‌شده یا پرتابل.</small></span></label>
       <div class="dlgRow"><button class="btn ghost" id="sData">📂 پوشه‌ی تنظیمات و داده‌ها</button></div>
+    </section>
+    <section data-pane="cats">
+      <h4>دسته‌بندی‌ها</h4>
+      <p class="hint">دسته‌بندی‌های خودتان را بسازید (مثلاً «نوع پروژه»، «مشتری»، «وضعیت») و برای هر کدام مقدارهایی با آیکون و نام تعریف کنید. هر پروژه در هر دسته‌بندی یک مقدار می‌گیرد (از دکمه‌ی ✎ روی کارت پروژه).</p>
+      <div id="catList"></div>
+      <button class="btn" id="addCat">＋ دسته‌بندی جدید</button>
+      <div id="emojiPick" hidden></div>
     </section>
     <section data-pane="projects">
       <h4>بروزرسانی پروژه‌ها</h4>

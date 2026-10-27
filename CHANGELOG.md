@@ -5,6 +5,7 @@ Release builds are published automatically from `main`. See the
 
 ## 1.0
 
+- Categories are now yours: the fixed type and client fields are replaced by categories you create, rename and delete, each with values that have an icon and a name. *Project type* is the default category; existing clients move into a *کارفرما* category.
 - Settings window: General, Project updates, Ember updates, Phone access, About.
 - Update check against GitHub Releases (on start and every 6 hours), with *Download and install*.
 - "🆕 Updated — test it" badge and Windows notification when a project changed since it was last run in Ember.

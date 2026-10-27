@@ -36,6 +36,51 @@ function load() {
   db.settings.notify ??= true;         // Windows notifications
   db.settings.tray ??= false;          // closing the window keeps Ember in the tray
   db.settings.autostart ??= false;
+  migrateCategories();
+}
+
+/* ---------- categories (user-defined groups, each with icon + name values) ---------- */
+const DEFAULT_TYPES = [
+  ['web', '🌐', 'وب‌سایت'], ['game', '🎮', 'بازی'], ['mobile', '📱', 'موبایل'],
+  ['desktop', '🖥️', 'دسکتاپ'], ['api', '⚙️', 'بک‌اند / API'], ['other', '📦', 'سایر'],
+];
+const newId = () => crypto.randomUUID().slice(0, 8);
+function migrateCategories() {
+  if (!db.categories) {
+    db.categories = [{ id: 'type', name: 'نوع پروژه', icon: '🗂️', values: DEFAULT_TYPES.map(([id, icon, name]) => ({ id, icon, name })) }];
+    // projects from older versions had a fixed "client" field: keep it as a category of its own
+    const clients = [...new Set(db.projects.map((p) => p.client).filter(Boolean))];
+    if (clients.length) db.categories.push({ id: 'client', name: 'کارفرما', icon: '🏢', values: clients.map((c) => ({ id: newId(), icon: '🏢', name: c })) });
+    for (const p of db.projects) {
+      p.cats ??= {};
+      if (p.type) p.cats.type = p.type;
+      if (p.client) p.cats.client = db.categories[1].values.find((v) => v.name === p.client).id;
+      delete p.type; delete p.client;
+    }
+    save();
+  }
+  for (const p of db.projects) p.cats ??= {};
+}
+const str = (v, max) => String(v ?? '').trim().slice(0, max);
+function setCategories(list) {
+  if (!Array.isArray(list)) return;
+  db.categories = list.map((c) => ({
+    id: str(c.id, 40) || newId(), name: str(c.name, 40) || 'دسته‌بندی', icon: str(c.icon, 8) || '🗂️',
+    values: (Array.isArray(c.values) ? c.values : []).map((v) => ({ id: str(v.id, 40) || newId(), icon: str(v.icon, 8) || '•', name: str(v.name, 40) || 'بدون نام' })),
+  }));
+  // drop assignments that point to deleted categories or values
+  for (const p of db.projects) {
+    const cats = {};
+    for (const c of db.categories) if (c.values.some((v) => v.id === p.cats[c.id])) cats[c.id] = p.cats[c.id];
+    p.cats = cats;
+  }
+  save();
+}
+// on add: put the project into the guessed "type" value, if that category and value still exist
+function defaultCats(pkg) {
+  const t = db.categories.find((c) => c.id === 'type');
+  const g = guessType(pkg);
+  return t && t.values.some((v) => v.id === g) ? { type: g } : {};
 }
 const save = () => fs.writeFileSync(dbFile, JSON.stringify(db, null, 2));
 
@@ -211,6 +256,7 @@ async function handle(req, res) {
     const pin = req.headers['x-pin'] || u.searchParams.get('pin');
     if (pin !== db.settings.pin) return json(res, { error: 'pin' }, 401);
     if (u.pathname === '/api/projects') return json(res, snapshot());
+    if (u.pathname === '/api/categories') return json(res, db.categories);
     if (u.pathname === '/api/logs') return json(res, logs.get(u.searchParams.get('id')) || []);
     if (u.pathname === '/api/events') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
@@ -419,7 +465,7 @@ ipcMain.handle('add', async () => {
     const pkg = readPkg(dir);
     const sc = runnable(pkg);
     if (!sc.length) continue;
-    db.projects.push({ id: crypto.randomUUID(), name: path.basename(dir), path: dir, type: guessType(pkg), client: '', script: sc[0] });
+    db.projects.push({ id: crypto.randomUUID(), name: path.basename(dir), path: dir, cats: defaultCats(pkg), script: sc[0] });
   }
   save();
   checkProjects();
@@ -427,13 +473,22 @@ ipcMain.handle('add', async () => {
 });
 ipcMain.handle('update', (_, id, patch) => {
   const p = db.projects.find((x) => x.id === id);
-  if (p) { for (const k of ['name', 'type', 'client', 'script']) if (k in patch) p[k] = patch[k]; save(); }
+  if (p) {
+    for (const k of ['name', 'script']) if (k in patch) p[k] = patch[k];
+    if (patch.cats && typeof patch.cats === 'object') {
+      p.cats = {};
+      for (const c of db.categories) if (c.values.some((v) => v.id === patch.cats[c.id])) p.cats[c.id] = patch.cats[c.id];
+    }
+    save();
+  }
   return snapshot();
 });
 ipcMain.handle('remove', (_, id) => { stop(id); revs.delete(id); db.projects = db.projects.filter((p) => p.id !== id); save(); return snapshot(); });
 ipcMain.handle('start', (_, id, script) => start(id, script));
 ipcMain.handle('stop', (_, id) => stop(id));
 ipcMain.handle('logs', (_, id) => logs.get(id) || []);
+ipcMain.handle('categories', () => db.categories);
+ipcMain.handle('setCategories', (_, list) => { setCategories(list); broadcast({ type: 'categories' }); return db.categories; });
 ipcMain.handle('openUrl', (_, url) => { if (/^https?:\/\//.test(url)) shell.openExternal(url); });
 ipcMain.handle('openData', () => shell.openPath(app.getPath('userData')));
 ipcMain.handle('openFolder', (_, id) => { const p = db.projects.find((x) => x.id === id); if (p) shell.openPath(p.path); });
