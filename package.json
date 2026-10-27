@@ -4,10 +4,20 @@
   "version": "1.0.0",
   "description": "Ember - launcher for your Node projects",
   "main": "main.js",
-  "author": "you",
+  "author": "Usef Farahmand",
   "license": "MIT",
+  "homepage": "https://github.com/Jolly-Panda-Works/ember",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Jolly-Panda-Works/ember.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Jolly-Panda-Works/ember/issues"
+  },
   "scripts": {
     "start": "electron .",
+    "test": "node --test",
+    "check": "node --check main.js && node --check preload.js && node --check updates.js && node --check projectwatch.js && node --check src/app.js",
     "dist": "electron-builder --win --publish never"
   },
   "devDependencies": {
@@ -17,20 +27,44 @@
   "build": {
     "appId": "app.ember.launcher",
     "productName": "Ember",
-    "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["main.js", "preload.js", "src/**/*", "package.json"],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "updates.js",
+      "projectwatch.js",
+      "src/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
     "win": {
       "icon": "build/icon.ico",
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "Ember-Setup-${version}.${ext}"
+      "artifactName": "Ember-Setup.${ext}"
     },
-    "portable": { "artifactName": "Ember-Portable-${version}.${ext}" }
+    "portable": {
+      "artifactName": "Ember-Portable.${ext}"
+    },
+    "copyright": "Copyright (c) 2026 Usef Farahmand"
   }
 }

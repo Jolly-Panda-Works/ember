@@ -1,0 +1,14 @@
+# Changelog
+
+Release builds are published automatically from `main`. See the
+[Releases page](https://github.com/Jolly-Panda-Works/ember/releases) for every build's notes.
+
+## 1.0
+
+- Settings window: General, Project updates, Ember updates, Phone access, About.
+- Update check against GitHub Releases (on start and every 6 hours), with *Download and install*.
+- "🆕 Updated — test it" badge and Windows notification when a project changed since it was last run in Ember.
+- New commits on the project's git remote are shown with a **Pull** button.
+- Optional: stay in the system tray when the window is closed, start with Windows.
+- Every push to `main` publishes a GitHub Release (installer, portable exe, Android remote APK, checksums).
+- Open source: MIT license, contributing guide, issue templates.

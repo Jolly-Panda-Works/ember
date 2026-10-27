@@ -19,7 +19,9 @@ aside{width:250px;flex:none;background:var(--panel);border-inline-start:1px soli
 .nav:hover{background:#2a2017}
 .nav.active{background:var(--o);color:#1b0e02;font-weight:700}
 .nav .n{margin-inline-start:auto;opacity:.7;font-size:12px}
-#remoteBtn{margin-top:auto}
+aside .foot{margin-top:auto;display:flex;flex-direction:column;gap:8px}
+.badgeDot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--o);margin-inline-start:8px;box-shadow:0 0 0 3px #ff7a1a33;vertical-align:middle}
+.badgeDot[hidden]{display:none}
 
 main{flex:1;min-width:0;display:flex;flex-direction:column}
 header{display:flex;align-items:center;gap:14px;padding:16px 22px;border-bottom:1px solid var(--line)}
@@ -47,6 +49,23 @@ header input:focus{border-color:var(--o);outline:0}
 .pm{color:var(--muted)}
 .warn{color:var(--o2)} .ok{color:var(--green)} .bad{color:var(--red)}
 .actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.card.updated{border-color:#6b3a14}
+.card.flash{animation:flash 1.6s}
+@keyframes flash{0%,60%{box-shadow:0 0 0 3px var(--o)}100%{box-shadow:none}}
+.tag.new{background:var(--o);color:#1b0e02;font-weight:700}
+.upd{display:flex;align-items:center;gap:10px;background:#2f1d0e;border:1px solid #6b3a14;border-radius:10px;padding:8px 10px;font-size:13px}
+.upd>div{flex:1;min-width:0}
+.upd b{display:block;color:var(--o2)}
+.upd small{display:block;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.upd.git{background:#13202a;border-color:#24435a}
+.upd.git b{color:#8cc8ff}
+.upd .btn{padding:4px 10px;white-space:nowrap}
+.pill{background:var(--o);color:#1b0e02;border-radius:99px;padding:0 8px;font-weight:700;font-size:12px;white-space:nowrap}
+#banners:empty{display:none}
+#banners{display:flex;flex-direction:column;gap:8px;padding:14px 22px 0}
+.banner{display:flex;align-items:center;gap:10px;background:#2f1d0e;border:1px solid #6b3a14;border-radius:12px;padding:8px 14px}
+.banner .btn:first-of-type{margin-inline-start:auto}
+.banner.ok{background:#12251a;border-color:#245a37}
 
 .btn{background:#33261b;color:var(--text);border:1px solid transparent;border-radius:9px;padding:7px 13px;cursor:pointer;font:inherit}
 .btn:hover{filter:brightness(1.15)}
@@ -70,6 +89,27 @@ dialog label.check{color:var(--text)}
 .info{background:#120d09;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0;line-height:2}
 .hint{color:var(--muted);font-size:12px}
 
+dialog.settings{width:min(760px,94vw);padding:0;display:none}
+dialog.settings[open]{display:flex}
+#setTabs{width:210px;flex:none;background:#17110c;border-inline-end:1px solid var(--line);padding:18px 10px;display:flex;flex-direction:column;gap:2px}
+#setTabs h3{margin:0 8px 12px}
+.pane{flex:1;min-width:0;padding:20px 24px;display:flex;flex-direction:column;min-height:440px;max-height:80vh;overflow:auto}
+.pane section{flex:1}
+.pane section[hidden]{display:none}
+.pane h4{margin:0 0 14px;font-size:16px}
+dialog label.switch{display:flex;gap:10px;align-items:flex-start;color:var(--text);font-size:14px;cursor:pointer;margin-bottom:14px}
+label.switch input{margin-top:4px;accent-color:var(--o);width:16px;height:16px;flex:none}
+label.switch small{display:block;color:var(--muted);font-size:12px}
+.dlgRow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.dlgRow.center{justify-content:center}
+.progress{height:8px;background:#120d09;border-radius:99px;overflow:hidden;margin:8px 0}
+.progress i{display:block;height:100%;background:var(--o);width:0;transition:width .3s}
+.notes{background:#120d09;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0 14px;white-space:pre-wrap;direction:ltr;text-align:left;max-height:170px;overflow:auto;font-size:12px;color:#e8d9c9}
+.about{text-align:center}
+.about h2{margin:8px 0 2px}
+.about h2 small{color:var(--muted);font-size:14px;font-weight:400}
+.about p{margin:12px 0}
+
 .remote .local{display:none!important}
 @media (max-width:760px){
   body{flex-direction:column}
@@ -78,4 +118,7 @@ dialog label.check{color:var(--text)}
   .group h4{display:none} .group>div{display:flex;gap:6px}
   .nav{width:auto;white-space:nowrap}
   #grid{padding:12px;grid-template-columns:1fr}
+  dialog.settings[open]{flex-direction:column}
+  #setTabs{width:auto;flex-direction:row;overflow:auto;border:0;border-bottom:1px solid var(--line)}
+  #setTabs h3{display:none}
 }

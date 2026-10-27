@@ -1,10 +1,12 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, Notification, Tray, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const crypto = require('crypto');
 const { spawn, execFile } = require('child_process');
+const updates = require('./updates');
+const watch = require('./projectwatch');
 
 const SRC = path.join(__dirname, 'src');
 const RUNNABLE = ['dev', 'start', 'serve', 'develop', 'preview', 'watch'];
@@ -12,8 +14,9 @@ const ANSI = /\x1B\[[0-9;?]*[A-Za-z]/g;
 const URL_RE = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]|(?:\d{1,3}\.){3}\d{1,3}):(\d+)/i;
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' };
 
-let win, dbFile, db, remote = null;
+let win, tray = null, dbFile, db, remote = null, quitting = false;
 const procs = new Map();   // id -> { child, status, url, stopping }
+const revs = new Map();    // id -> { kind, rev, time, subject, behind, upstream, remoteRev, remoteSubject, fetchError }
 const logs = new Map();    // id -> string[]
 const sse = new Set();
 
@@ -26,6 +29,13 @@ function load() {
   db.settings.port ??= 7777;
   db.settings.remote ??= false;
   db.settings.pin ??= String(crypto.randomInt(100000, 999999));
+  db.settings.checkUpdates ??= true;   // look for a new Ember release on GitHub
+  db.settings.watchProjects ??= true;  // "updated — test it" badge on projects
+  db.settings.fetchRemote ??= true;    // git fetch to see commits that are not pulled yet
+  db.settings.fetchMinutes ??= 15;
+  db.settings.notify ??= true;         // Windows notifications
+  db.settings.tray ??= false;          // closing the window keeps Ember in the tray
+  db.settings.autostart ??= false;
 }
 const save = () => fs.writeFileSync(dbFile, JSON.stringify(db, null, 2));
 
@@ -92,6 +102,7 @@ function snapshot() {
       ...p, exists: !!pkg, scripts, pm: detectPM(p.path),
       status: st ? st.status : 'stopped', url: st ? st.url : null,
       needsInstall: st ? false : needsInstall(p.path),
+      ...projectUpdate(p),
     };
   });
 }
@@ -117,6 +128,7 @@ function pushState(id) {
     status: st ? st.status : 'stopped',
     url: st ? st.url : null,
     needsInstall: st || !p ? false : needsInstall(p.path),
+    ...(p ? projectUpdate(p) : {}),
   });
 }
 
@@ -151,6 +163,7 @@ function start(id, script) {
   const p = db.projects.find((x) => x.id === id);
   if (!p || procs.has(id)) return;
   if (script && script !== p.script) { p.script = script; save(); }
+  markTested(p);
   const pm = detectPM(p.path);
   const st = { child: null, status: 'installing', url: null, stopping: false };
   procs.set(id, st);
@@ -231,7 +244,170 @@ function applyRemote() {
     sse.forEach((r) => r.end()); sse.clear();
   }
 }
-const settingsOut = () => ({ ...db.settings, ips: lanIPs() });
+const settingsOut = () => ({
+  ...db.settings, ips: lanIPs(), version: app.getVersion(), repo: updates.REPO_URL,
+  portable: !!process.env.PORTABLE_EXECUTABLE_FILE, appUpdate, justUpdated,
+});
+
+/* ---------- notifications & tray ---------- */
+function showWindow() {
+  if (!win || win.isDestroyed()) return createWindow();
+  if (win.isMinimized()) win.restore();
+  win.show(); win.focus();
+}
+function notify(title, body, evt) {
+  if (!db.settings.notify || !Notification.isSupported()) return;
+  const n = new Notification({ title, body, icon: path.join(__dirname, 'build', 'icon.png') });
+  n.on('click', () => { showWindow(); if (evt) broadcast(evt); });
+  n.show();
+}
+function applyTray() {
+  if (db.settings.tray && !tray) {
+    tray = new Tray(path.join(__dirname, 'build', 'icon.png'));
+    tray.setToolTip('Ember');
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: 'باز کردن Ember', click: showWindow },
+      { label: 'بررسی بروزرسانی پروژه‌ها', click: () => checkProjects(true) },
+      { type: 'separator' },
+      { label: 'خروج', click: () => { quitting = true; app.quit(); } },
+    ]));
+    tray.on('click', showWindow);
+  } else if (!db.settings.tray && tray) {
+    tray.destroy(); tray = null;
+  }
+}
+function applyAutostart() {
+  if (!app.isPackaged || process.platform !== 'win32') return;
+  const exe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+  app.setLoginItemSettings({ openAtLogin: !!db.settings.autostart, path: exe });
+}
+
+/* ---------- project updates ("updated — test it") ---------- */
+function projectUpdate(p) {
+  const r = revs.get(p.id);
+  if (!db.settings.watchProjects || !r) return { updated: false, behind: 0 };
+  return {
+    updated: !!(r.rev && p.seenRev && r.rev !== p.seenRev),
+    updateKind: r.kind, updateTime: r.time, updateSubject: r.subject,
+    behind: db.settings.fetchRemote ? r.behind || 0 : 0,
+    upstream: r.upstream || null, remoteSubject: r.remoteSubject || '', fetchError: r.fetchError || null,
+  };
+}
+function markTested(p) {
+  const r = revs.get(p.id);
+  if (r && r.rev && p.seenRev !== r.rev) { p.seenRev = r.rev; save(); }
+}
+
+let checking = false, lastFetch = 0;
+async function checkProjects(withRemote = false) {
+  if (checking || !db.settings.watchProjects) return;
+  checking = true;
+  const fetchNow = db.settings.fetchRemote && (withRemote || Date.now() - lastFetch >= db.settings.fetchMinutes * 60000);
+  if (fetchNow) lastFetch = Date.now();
+  const fetched = new Set();
+  let dirty = false;
+  try {
+    for (const p of [...db.projects]) {
+      const local = await watch.localRev(p.path);
+      if (!db.projects.includes(p)) continue;                // removed meanwhile
+      const prev = revs.get(p.id) || {};
+      const r = { ...prev, ...(local || { kind: null, rev: null, time: null, subject: '' }) };
+      if (fetchNow) Object.assign(r, (await watch.remoteState(p.path, fetched)) || { behind: 0, upstream: null, remoteRev: null, fetchError: null });
+      revs.set(p.id, r);
+      if (r.rev && !p.seenRev) { p.seenRev = r.rev; dirty = true; }   // first look: nothing to test yet
+      if (r.rev && r.rev !== p.seenRev && p.notifiedRev !== r.rev) {
+        p.notifiedRev = r.rev; dirty = true;
+        notify(`🆕 ${p.name} بروز شد`, (r.subject ? r.subject + '\n' : '') + 'تغییرات جدید را اجرا و تست کنید.', { type: 'focus', id: p.id });
+      }
+      if (r.behind > 0 && r.remoteRev && p.notifiedRemote !== r.remoteRev) {
+        p.notifiedRemote = r.remoteRev; dirty = true;
+        notify(`⬇ ${p.name}: ${r.behind} کامیت جدید`, (r.remoteSubject ? r.remoteSubject + '\n' : '') + 'دریافت (pull) کنید و تست کنید.', { type: 'focus', id: p.id });
+      }
+      if (prev.rev !== r.rev || prev.behind !== r.behind || prev.fetchError !== r.fetchError) pushState(p.id);
+    }
+  } finally {
+    if (dirty) save();
+    checking = false;
+  }
+}
+async function pullProject(id) {
+  const p = db.projects.find((x) => x.id === id);
+  if (!p) return { ok: false, err: 'not found' };
+  addLog(id, `$ git pull --ff-only\n`);
+  const r = await watch.pull(p.path);
+  addLog(id, (r.out || r.err || '') + '\n' + (r.ok ? '✔ Pulled.\n' : '✖ Pull failed.\n'));
+  lastFetch = 0;
+  await checkProjects(true);
+  return { ok: r.ok, err: r.ok ? null : r.err };
+}
+
+/* ---------- Ember's own updates (GitHub Releases) ---------- */
+let appUpdate = { checking: false, checkedAt: null, latest: null, available: false, error: null, downloading: false, progress: 0 };
+let justUpdated = null;   // version we just updated to, shown once as "updated" in the UI
+function setAppUpdate(patch) { appUpdate = { ...appUpdate, ...patch }; broadcast({ type: 'appUpdate', appUpdate }); }
+
+async function checkAppUpdate(manual = false) {
+  if (appUpdate.checking || appUpdate.downloading) return appUpdate;
+  setAppUpdate({ checking: true, error: null });
+  try {
+    const r = await updates.fetchLatest(net.fetch, app.getVersion());
+    setAppUpdate({ checking: false, checkedAt: Date.now(), latest: r.latest, available: r.available });
+    if (r.available && !manual && db.settings.notifiedVersion !== r.latest.version) {
+      db.settings.notifiedVersion = r.latest.version; save();
+      notify(`نسخه‌ی جدید Ember: ${r.latest.version}`, 'برای دانلود و نصب، تنظیمات ← بروزرسانی را باز کنید.', { type: 'openSettings', tab: 'updates' });
+    }
+  } catch (e) {
+    setAppUpdate({ checking: false, checkedAt: Date.now(), error: e.message || String(e) });
+  }
+  return appUpdate;
+}
+
+async function installAppUpdate() {
+  const l = appUpdate.latest;
+  if (!l || appUpdate.downloading) return appUpdate;
+  // portable builds, dev runs and other platforms: just open the download page
+  if (process.platform !== 'win32' || !app.isPackaged || process.env.PORTABLE_EXECUTABLE_FILE || !l.setupUrl) {
+    shell.openExternal(process.env.PORTABLE_EXECUTABLE_FILE && l.portableUrl ? l.portableUrl : l.url);
+    return appUpdate;
+  }
+  setAppUpdate({ downloading: true, progress: 0, error: null });
+  try {
+    const res = await net.fetch(l.setupUrl);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const total = Number(res.headers.get('content-length')) || 0;
+    const file = path.join(app.getPath('temp'), `Ember-Setup-${l.version}.exe`);
+    const out = fs.createWriteStream(file);
+    const reader = res.body.getReader();
+    let got = 0, lastSent = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      got += value.length;
+      if (!out.write(Buffer.from(value))) await new Promise((ok) => out.once('drain', ok));
+      if (total && got - lastSent > total / 50) { lastSent = got; setAppUpdate({ progress: got / total }); }
+    }
+    await new Promise((ok, fail) => out.end((e) => (e ? fail(e) : ok())));
+    setAppUpdate({ progress: 1 });
+    spawn(file, [], { detached: true, stdio: 'ignore' }).unref();
+    quitting = true;
+    setTimeout(() => app.quit(), 500);
+  } catch (e) {
+    setAppUpdate({ downloading: false, error: 'دانلود ناموفق بود: ' + (e.message || e) });
+  }
+  return appUpdate;
+}
+
+function scheduleChecks() {
+  setTimeout(() => checkProjects(true), 3000);
+  setInterval(() => checkProjects(false), 60000);           // local check every minute, fetch every N minutes
+  setTimeout(() => db.settings.checkUpdates && checkAppUpdate(), 8000);
+  setInterval(() => db.settings.checkUpdates && checkAppUpdate(), 6 * 3600000);
+}
+function noteVersion() {
+  const v = app.getVersion();
+  if (db.settings.lastVersion && db.settings.lastVersion !== v && updates.compareVersions(v, db.settings.lastVersion) > 0) justUpdated = v;
+  if (db.settings.lastVersion !== v) { db.settings.lastVersion = v; save(); }
+}
 
 /* ---------- IPC ---------- */
 ipcMain.handle('list', () => snapshot());
@@ -246,6 +422,7 @@ ipcMain.handle('add', async () => {
     db.projects.push({ id: crypto.randomUUID(), name: path.basename(dir), path: dir, type: guessType(pkg), client: '', script: sc[0] });
   }
   save();
+  checkProjects();
   return snapshot();
 });
 ipcMain.handle('update', (_, id, patch) => {
@@ -253,19 +430,31 @@ ipcMain.handle('update', (_, id, patch) => {
   if (p) { for (const k of ['name', 'type', 'client', 'script']) if (k in patch) p[k] = patch[k]; save(); }
   return snapshot();
 });
-ipcMain.handle('remove', (_, id) => { stop(id); db.projects = db.projects.filter((p) => p.id !== id); save(); return snapshot(); });
+ipcMain.handle('remove', (_, id) => { stop(id); revs.delete(id); db.projects = db.projects.filter((p) => p.id !== id); save(); return snapshot(); });
 ipcMain.handle('start', (_, id, script) => start(id, script));
 ipcMain.handle('stop', (_, id) => stop(id));
 ipcMain.handle('logs', (_, id) => logs.get(id) || []);
 ipcMain.handle('openUrl', (_, url) => { if (/^https?:\/\//.test(url)) shell.openExternal(url); });
+ipcMain.handle('openData', () => shell.openPath(app.getPath('userData')));
 ipcMain.handle('openFolder', (_, id) => { const p = db.projects.find((x) => x.id === id); if (p) shell.openPath(p.path); });
 ipcMain.handle('settings', () => settingsOut());
 ipcMain.handle('setSettings', (_, s) => {
-  if (typeof s.remote === 'boolean') db.settings.remote = s.remote;
+  for (const k of ['remote', 'checkUpdates', 'watchProjects', 'fetchRemote', 'notify', 'tray', 'autostart']) {
+    if (typeof s[k] === 'boolean') db.settings[k] = s[k];
+  }
+  if (Number.isFinite(s.fetchMinutes)) db.settings.fetchMinutes = Math.min(240, Math.max(5, Math.round(s.fetchMinutes)));
   if (s.regenPin) db.settings.pin = String(crypto.randomInt(100000, 999999));
-  save(); applyRemote();
+  save(); applyRemote(); applyTray(); applyAutostart();
+  if (s.watchProjects || s.fetchRemote) checkProjects(true);
+  if (s.watchProjects === false || s.fetchRemote === false) db.projects.forEach((p) => pushState(p.id));
   return settingsOut();
 });
+ipcMain.handle('checkProjects', (_, withRemote) => checkProjects(!!withRemote).then(snapshot));
+ipcMain.handle('markTested', (_, id) => { const p = db.projects.find((x) => x.id === id); if (p) markTested(p); return snapshot(); });
+ipcMain.handle('pull', (_, id) => pullProject(id));
+ipcMain.handle('checkAppUpdate', () => checkAppUpdate(true));
+ipcMain.handle('installAppUpdate', () => installAppUpdate());
+ipcMain.handle('dismissJustUpdated', () => { justUpdated = null; });
 
 /* ---------- window ---------- */
 function createWindow() {
@@ -276,7 +465,13 @@ function createWindow() {
   });
   Menu.setApplicationMenu(null);
   win.loadFile(path.join(SRC, 'index.html'));
+  win.on('close', (e) => { if (tray && !quitting) { e.preventDefault(); win.hide(); } });
+  win.on('focus', () => checkProjects(false));
 }
-app.whenReady().then(() => { load(); createWindow(); applyRemote(); });
-app.on('before-quit', () => procs.forEach((st) => st.child && killTree(st.child.pid)));
-app.on('window-all-closed', () => app.quit());
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) app.quit();
+app.on('second-instance', () => showWindow());
+app.setAppUserModelId('app.ember.launcher');   // Windows notifications need it
+app.whenReady().then(() => { if (!gotLock) return; load(); noteVersion(); createWindow(); applyRemote(); applyTray(); applyAutostart(); scheduleChecks(); });
+app.on('before-quit', () => { quitting = true; procs.forEach((st) => st.child && killTree(st.child.pid)); });
+app.on('window-all-closed', () => { if (!tray) app.quit(); });

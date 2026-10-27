@@ -1,0 +1,48 @@
+name: Bug report / گزارش مشکل
+description: Something isn't working as expected
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened? / چه اتفاقی افتاد؟
+      description: Describe the problem and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / مراحل تکرار
+      placeholder: |
+        1. Add the folder ...
+        2. Press ▶ ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Ember version
+      description: Settings → About (e.g. 1.0.12), or "source".
+    validations:
+      required: true
+  - type: dropdown
+    id: build
+    attributes:
+      label: Build
+      options:
+        - Installer (Ember-Setup.exe)
+        - Portable (Ember-Portable.exe)
+        - From source (npm start)
+        - Phone remote (APK)
+  - type: input
+    id: os
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 23H2
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: The project's 📜 log, if relevant.
+      render: shell
