@@ -13,6 +13,7 @@ async function rq(method, url, body) {
 const api = window.ember || {
   list: () => rq('GET', '/api/projects'),
   categories: () => rq('GET', '/api/categories'),
+  settings: () => rq('GET', '/api/info'),
   start: (id, script) => rq('POST', '/api/start', { id, script }),
   stop: (id) => rq('POST', '/api/stop', { id }),
   logs: (id) => rq('GET', '/api/logs?id=' + id),
@@ -45,19 +46,33 @@ function renderSide() {
   const nav = (attrs, label, n, on) => `<button class="nav ${on ? 'active' : ''}" ${attrs}>${label}<span class="n">${n}</span></button>`;
   const upd = items.filter((i) => i.updated || i.behind > 0).length;
   const noFilter = !filter.updated && !Object.keys(filter.cats).length;
-  let h = `<div class="group">${nav('data-all', '📁 همه پروژه‌ها', items.length, noFilter)}` +
-    (upd || filter.updated ? nav('data-updated', '🆕 بروز شده‌ها', upd, filter.updated) : '') + '</div>';
+  let h = `<div class="group"><h4>پروژه‌ها</h4>${nav('data-all', '📁 همه پروژه‌ها', items.length, noFilter)}` +
+    nav('data-updated', '🆕 بروز شده‌ها', upd, filter.updated) + '</div>';
   for (const c of cats) {
     const none = items.filter((i) => !valueOf(i, c)).length;
     h += `<div class="group"><h4>${esc(c.icon)} ${esc(c.name)}<button class="mini local" data-manage title="مدیریت دسته‌بندی‌ها">✎</button></h4>` +
+      // "All" is automatic in every category: it clears that category's filter
+      nav(`data-cat="${esc(c.id)}" data-val="*"`, '✦ همه', items.length, !(c.id in filter.cats)) +
       c.values.map((v) => nav(`data-cat="${esc(c.id)}" data-val="${esc(v.id)}"`, `${esc(v.icon)} ${esc(v.name)}`,
         items.filter((i) => (i.cats || {})[c.id] === v.id).length, filter.cats[c.id] === v.id)).join('') +
       (none && c.values.length ? nav(`data-cat="${esc(c.id)}" data-val=""`, `— بدون ${esc(c.name)}`, none, filter.cats[c.id] === '') : '') +
-      (!c.values.length ? '<div class="hint pad">هنوز مقداری ندارد.</div>' : '') + '</div>';
+      '</div>';
   }
-  h += '<button class="btn ghost wide local" data-manage>＋ دسته‌بندی جدید</button>';
+  h += '<button class="btn ghost local" style="width:100%" data-manage>＋ دسته‌بندی جدید</button>';
   $('#groups').innerHTML = h;
 }
+
+// project logo: the picture, else the icon of its first category value, else its first letter
+function logoHtml(i, big) {
+  const cls = `logo${big ? ' big' : ''}`;
+  if (i.logoUrl) {
+    const src = isRemote ? `/api/logo?id=${encodeURIComponent(i.id)}&pin=${encodeURIComponent(PIN)}&v=${i.logoV || 0}` : i.logoUrl;
+    return `<div class="${cls}"><img src="${esc(src)}" alt="" onerror="this.parentNode.textContent='${esc(initial(i))}'"></div>`;
+  }
+  const v = cats.map((c) => valueOf(i, c)).find(Boolean);
+  return `<div class="${cls}">${esc(v ? v.icon : initial(i))}</div>`;
+}
+const initial = (i) => ([...(i.name || '?').replace(/[^\p{L}\p{N}]/gu, '')][0] || '?').toUpperCase();
 
 function card(i) {
   const busy = i.status !== 'stopped';
@@ -71,9 +86,12 @@ function card(i) {
       <div><b>⬇ ${i.behind} کامیت جدید در <code>${esc(i.upstream)}</code></b><small>${esc(i.remoteSubject)}</small></div>
       <button class="btn local" data-act="pull">دریافت (pull)</button></div>` : '') +
     (i.fetchError ? `<div class="hint bad" title="${esc(i.fetchError)}">⚠ git fetch ناموفق بود</div>` : '');
+  const tags = cats.map((c) => valueOf(i, c)).filter(Boolean);
   return `<article class="card ${i.status} ${i.updated || i.behind > 0 ? 'updated' : ''}" data-id="${i.id}">
-    <div class="top"><span class="dot"></span><h3>${esc(i.name)}</h3>${i.updated ? '<span class="tag new">🆕 بروز شده</span>' : ''}</div>
-    <div class="meta"><span class="tags">${cats.map((c) => valueOf(i, c)).filter(Boolean).map((v) => `<span class="tag">${esc(v.icon)} ${esc(v.name)}</span>`).join('')}</span><span>${STATUS[i.status]}</span></div>
+    <div class="top">${logoHtml(i)}
+      <div class="ttl"><h3 title="${esc(i.name)}">${esc(i.name)}</h3><div class="state"><span class="dot"></span>${STATUS[i.status]}</div></div>
+      ${i.updated ? '<span class="tag new">🆕 بروز شده</span>' : ''}</div>
+    ${tags.length ? `<div class="tags">${tags.map((v) => `<span class="tag">${esc(v.icon)} ${esc(v.name)}</span>`).join('')}</div>` : ''}
     <div class="path" title="${esc(i.path)}">${esc(i.path)}</div>
     <div class="row">
       <select ${busy ? 'disabled' : ''}>${i.scripts.map((s) => `<option ${s === i.script ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>
@@ -93,9 +111,16 @@ function render() {
   renderSide();
   const v = visible();
   $('#grid').innerHTML = v.length ? v.map(card).join('')
-    : `<div class="empty">${items.length ? 'پروژه‌ای با این فیلتر پیدا نشد.' : 'هنوز پروژه‌ای اضافه نشده. یک پوشه‌ی پروژه (یا پوشه‌ای که چند پروژه دارد) را اضافه کنید.'}</div>`;
+    : `<div class="empty">${items.length ? 'پروژه‌ای با این فیلتر پیدا نشد.' : 'هنوز پروژه‌ای اضافه نشده. از نوار بالا «افزودن پروژه» را بزنید و یک پوشه‌ی پروژه (یا پوشه‌ای که چند پروژه دارد) را انتخاب کنید.'}</div>`;
+  // page title = the active filters, e.g. "بازی · Jolly Panda"
+  const parts = cats.filter((c) => c.id in filter.cats).map((c) => {
+    const val = c.values.find((x) => x.id === filter.cats[c.id]);
+    return val ? `${val.icon} ${val.name}` : `بدون ${c.name}`;
+  });
+  if (filter.updated) parts.unshift('🆕 بروز شده‌ها');
+  $('#pageTitle').textContent = parts.length ? parts.join(' · ') : 'همه پروژه‌ها';
   const run = items.filter((i) => i.status === 'running').length;
-  $('#stats').textContent = `${items.length} پروژه · ${run} در حال اجرا`;
+  $('#stats').textContent = `${v.length === items.length ? items.length : `${v.length} از ${items.length}`} پروژه · ${run} در حال اجرا`;
 }
 
 async function reload() { [items, cats] = await Promise.all([api.list(), api.categories()]); render(); }
@@ -138,7 +163,7 @@ $('#groups').onclick = (e) => {
   else if (b.hasAttribute('data-updated')) filter.updated = !filter.updated;
   else if (b.dataset.cat) {
     const { cat, val } = b.dataset;
-    if (filter.cats[cat] === val) delete filter.cats[cat]; else filter.cats[cat] = val;   // click again to clear
+    if (val === '*' || filter.cats[cat] === val) delete filter.cats[cat]; else filter.cats[cat] = val;   // "All" or a second click clears
   }
   render();
 };
@@ -171,12 +196,32 @@ $('#add').onclick = async () => { items = await api.add(); render(); };
 function openEdit(i) {
   editing = i;
   $('#eName').value = i.name;
+  fillLogo(i);
   $('#eCats').innerHTML = cats.map((c) => `<label>${esc(c.icon)} ${esc(c.name)}
     <select data-cid="${esc(c.id)}"><option value="">—</option>${c.values.map((v) =>
       `<option value="${esc(v.id)}" ${(i.cats || {})[c.id] === v.id ? 'selected' : ''}>${esc(v.icon)} ${esc(v.name)}</option>`).join('')}</select></label>`).join('') ||
     '<p class="hint">دسته‌بندی‌ای تعریف نشده. از تنظیمات ← دسته‌بندی‌ها بسازید.</p>';
   $('#editDlg').showModal();
 }
+const LOGO_HINT = {
+  auto: 'خودکار: favicon یا لوگوی خود پروژه (مثلاً public/favicon.svg) اگر پیدا شود.',
+  custom: 'تصویری که خودتان انتخاب کرده‌اید (یک کپی نگه داشته می‌شود).',
+  none: 'بدون تصویر: آیکون دسته‌بندی یا حرف اول نام نشان داده می‌شود.',
+};
+function fillLogo(i) {
+  $('#eLogo').outerHTML = logoHtml(i, true).replace('<div class="logo big"', '<div class="logo big" id="eLogo"');
+  $('#eLogoHint').textContent = LOGO_HINT[i.logoMode] + (i.logoMode === 'auto' && !i.logoUrl ? ' (چیزی پیدا نشد)' : '');
+  $('#eLogoAuto').hidden = i.logoMode === 'auto';
+  $('#eLogoNone').hidden = i.logoMode === 'none';
+}
+async function logoAction(fn) {
+  items = await fn(editing.id);
+  editing = items.find((x) => x.id === editing.id);
+  fillLogo(editing); render();
+}
+$('#eLogoPick').onclick = () => logoAction(api.pickLogo);
+$('#eLogoAuto').onclick = () => logoAction((id) => api.setLogoMode(id, 'auto'));
+$('#eLogoNone').onclick = () => logoAction((id) => api.setLogoMode(id, 'none'));
 $('#eCancel').onclick = () => $('#editDlg').close();
 $('#eSave').onclick = async () => {
   const sel = {};
@@ -199,6 +244,7 @@ function renderCats() {
         <input data-f="name" value="${esc(c.name)}" placeholder="نام دسته‌بندی">
         <button class="btn ghost" data-c="delCat" title="حذف دسته‌بندی">🗑</button>
       </div>
+      <div class="catAll">✦ همه — خودکار، همیشه اول لیست</div>
       ${c.values.map((v, vi) => `<div class="valRow" data-vi="${vi}">
         <input class="ico" data-vf="icon" value="${esc(v.icon)}" title="آیکون">
         <input data-vf="name" value="${esc(v.name)}" placeholder="نام">
@@ -274,6 +320,7 @@ function fillSettings(s) {
   $('#sFetchMin').disabled = !s.watchProjects || !s.fetchRemote;
   $('[data-set=fetchRemote]').disabled = !s.watchProjects;
   $('#uCur').textContent = s.version; $('#aVer').textContent = s.version;
+  $('#ver').textContent = 'v' + s.version; $('#ver').hidden = false;
   $('#rOn').checked = s.remote;
   $('#rInfo').innerHTML = s.remote
     ? `آدرس: ${s.ips.map((ip) => `<code>${ip}:${s.port}</code>`).join(' ')}<br>PIN: <code>${s.pin}</code>`
@@ -347,7 +394,9 @@ $('#uPage').onclick = () => api.openUrl(`${settings.repo}/releases`);
 $('#rPin').onclick = () => saveSettings({ regenPin: true });
 $('#rApk').onclick = () => api.openUrl(`${settings.repo}/releases/latest/download/Ember-Remote.apk`);
 document.querySelectorAll('[data-link]').forEach((b) => (b.onclick = () => api.openUrl(settings.repo + b.dataset.link)));
+document.querySelectorAll('[data-link-abs]').forEach((b) => (b.onclick = (e) => { e.preventDefault(); api.openUrl(b.dataset.linkAbs); }));
 
 reload();
 if (isRemote) setInterval(reload, 15000);
+if (isRemote) api.settings().then((s) => { $('#ver').textContent = 'v' + s.version; $('#ver').hidden = false; }).catch(() => {});
 else api.settings().then(fillSettings);
