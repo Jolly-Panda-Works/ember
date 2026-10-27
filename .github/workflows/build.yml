@@ -25,8 +25,8 @@ jobs:
     outputs:
       version: ${{ steps.ver.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
       - name: Syntax check
@@ -48,15 +48,15 @@ jobs:
     needs: check
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
       - name: Set version
         run: node tools/set-version.js ${{ needs.check.outputs.version }}
       - run: npm install
       - run: npm run dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ember-windows
           path: |
@@ -71,11 +71,11 @@ jobs:
       run:
         working-directory: mobile
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
@@ -85,7 +85,7 @@ jobs:
       - run: chmod +x gradlew && ./gradlew assembleDebug
         working-directory: mobile/android
       - run: cp android/app/build/outputs/apk/debug/app-debug.apk Ember-Remote.apk
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ember-android
           path: mobile/Ember-Remote.apk
@@ -96,14 +96,14 @@ jobs:
     needs: [check, windows, android]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           merge-multiple: true
           path: out
       - name: Create checksums
         working-directory: out
         run: sha256sum Ember-Setup.exe Ember-Portable.exe Ember-Remote.apk > SHA256SUMS.txt
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.check.outputs.version }}
           name: Ember v${{ needs.check.outputs.version }}
