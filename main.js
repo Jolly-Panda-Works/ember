@@ -288,7 +288,9 @@ function exec(p, st, cmd, done, extraEnv = {}) {
   try {
     fd = fs.openSync(st.log, 'a');
     child = spawn(cmd, {
-      cwd: p.path, shell: true, windowsHide: true, detached: true, stdio: ['ignore', fd, fd],
+      // Windows: not detached, or npm/node open a visible console window. The server still outlives
+      // an Ember restart there (only the cmd.exe wrapper is closed with Ember) and is found again by its folder.
+      cwd: p.path, shell: true, windowsHide: true, detached: process.platform !== 'win32', stdio: ['ignore', fd, fd],
       env: { ...process.env, BROWSER: 'none', FORCE_COLOR: '0', ...extraEnv },
     });
   } catch (e) { note(st, String(e) + '\n'); return end(1); }
@@ -298,8 +300,18 @@ function exec(p, st, cmd, done, extraEnv = {}) {
   child.on('exit', (code) => setTimeout(() => end(code), 400));   // let the last output reach the log first
 }
 
+// The address does not depend on the output: as soon as the run's port is listening, it is known.
+function probeUrl(p, st) {
+  const until = Date.now() + 5 * 60000;
+  st.probe = setInterval(async () => {
+    if (st.url || !st.port || Date.now() > until || !procs.has(p.id)) return clearInterval(st.probe);
+    if (await ports.portInUse(st.port) && !st.url) { st.url = `http://localhost:${st.port}`; pushState(p.id); clearInterval(st.probe); }
+  }, 1500);
+}
+
 function finishRun(id) {
   const st = procs.get(id);
+  if (st && st.probe) clearInterval(st.probe);
   if (st && st.tail) clearInterval(st.tail);
   if (st && st.watch) clearInterval(st.watch);
   procs.delete(id);
@@ -350,10 +362,12 @@ async function reattach() {
       adopt(p, { pid: r.pid, port: (row && row.port) || r.port, log: r.log });   // earlier output + follow new output
       continue;
     }
-    if (r) { delete p.run; save(); }
-    // started some other way (an older Ember, a terminal): known by its folder in the command line
+    // the wrapper is gone but the server lives on (Windows, after an update), or it was started some
+    // other way (an older Ember, a terminal): known by its folder; keep following its log if it has one
     const row = rows.find((x) => x.projectId === p.id);
-    if (row) adopt(p, { pid: row.pid, port: row.port, log: null });
+    const log = r && r.log && fs.existsSync(r.log) ? r.log : null;
+    if (r) { delete p.run; save(); }
+    if (row) adopt(p, { pid: row.pid, port: row.port, log });
   }
 }
 
@@ -394,6 +408,7 @@ function start(id, script) {
     const cmd = ports.runCommand(pm, p.script, tool.flag, port);
     exec(p, st, cmd, () => finish(), { PORT: String(port) });
     if (st.pid) { p.run = { pid: st.pid, port, log: st.log, cmd }; save(); }
+    probeUrl(p, st);
   };
   if (needsInstall(p.path)) {
     pushState(id);

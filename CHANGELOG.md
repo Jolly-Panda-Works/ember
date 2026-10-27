@@ -5,6 +5,8 @@ Release builds are published automatically from `main`. See the
 
 ## 1.0
 
+- Windows: running a project no longer opens a console window.
+- The "Open" button appears as soon as the project's port is listening, even when the dev server prints no address.
 - A project that is already running (left over from before Ember restarted, or started outside Ember) is reconnected on its port instead of starting a second copy on the next port. Runs keep going while Ember restarts for an update and come back with their log.
 - Ports are no longer reserved for stopped projects; a project's port is a preference and is not changed because it was busy once.
 - Settings → Ports: every port in use, the program holding it, and which Ember project it belongs to (open, project window, end).
