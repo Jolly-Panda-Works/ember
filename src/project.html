@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ember</title>
+<link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="projectWin">
+<header class="topbar" id="head"></header>
+<section class="projInfo" id="info"></section>
+<section class="logBox">
+  <div class="logHead">
+    <b data-i18n="proj.log"></b>
+    <span style="flex:1"></span>
+    <label class="switch small"><input type="checkbox" id="follow" checked><span data-i18n="proj.follow"></span></label>
+    <button class="btn ghost" id="copy" data-i18n="proj.copy"></button>
+    <button class="btn ghost" id="clear" data-i18n="proj.clear"></button>
+  </div>
+  <pre id="log"></pre>
+</section>
+<script src="i18n.js"></script>
+<script src="common.js"></script>
+<script src="project.js"></script>
+</body>
+</html>

@@ -34,7 +34,6 @@ body:
         - Installer (Ember-Setup.exe)
         - Portable (Ember-Portable.exe)
         - From source (npm start)
-        - Phone remote (APK)
   - type: input
     id: os
     attributes:

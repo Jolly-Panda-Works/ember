@@ -47,7 +47,14 @@ body.win .topbar input,body.win .topbar button{-webkit-app-region:no-drag}
 .layout{flex:1;min-height:0;display:flex}
 aside{width:240px;flex:none;background:var(--side);padding:26px 14px;overflow:auto}
 .group{margin-bottom:22px}
-.side-h,.group h4{display:flex;align-items:center;margin:0 10px 8px;color:var(--muted);font-weight:700;font-size:12px;letter-spacing:.3px}
+.side-h,.group h4{display:flex;align-items:center;gap:6px;margin:0 10px 8px;color:var(--muted);font-weight:700;font-size:12px;letter-spacing:.3px}
+.group h4{cursor:pointer;user-select:none;margin-inline-start:4px}
+.group h4:hover{color:var(--text)}
+.chev{display:inline-block;width:12px;font-size:10px;transition:transform .15s;color:var(--faint)}
+.group.closed .chev,.catBox.closed .chevBtn{transform:rotate(-90deg)}
+[dir=rtl] .group.closed .chev,[dir=rtl] .catBox.closed .chevBtn{transform:rotate(90deg)}
+.group.closed .gBody{display:none}
+.group.closed{margin-bottom:10px}
 .mini{margin-inline-start:auto;background:none;border:0;color:var(--muted);cursor:pointer;padding:0 4px;opacity:0;transition:opacity .15s}
 .group:hover .mini,.mini:focus-visible{opacity:1}
 .nav{display:flex;width:100%;align-items:center;gap:8px;background:none;border:0;color:var(--text);padding:7px 10px;border-radius:9px;cursor:pointer;text-align:start;opacity:.85}
@@ -66,7 +73,7 @@ main{flex:1;min-width:0;display:flex;flex-direction:column}
 .empty{grid-column:1/-1;text-align:center;color:var(--muted);padding:70px 0;background:var(--panel);border:1px dashed var(--line);border-radius:var(--r)}
 
 /* ---------- project card ---------- */
-.card{background:var(--panel);border:1.5px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:11px;transition:border-color .15s}
+.card{cursor:pointer;background:var(--panel);border:1.5px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:11px;transition:border-color .15s}
 .card:hover{border-color:#4D3D2F}
 .card.running{border-color:#2F6B45}
 .card.updated{border-color:var(--o)}
@@ -75,7 +82,6 @@ main{flex:1;min-width:0;display:flex;flex-direction:column}
 .top{display:flex;align-items:center;gap:12px}
 .ttl{flex:1;min-width:0}
 .ttl h3{margin:0;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:text}
-.remote .ttl h3{cursor:default}
 .rename{width:100%;font-size:16px;font-weight:700;background:var(--field);color:var(--text);border:1px solid var(--o);border-radius:8px;padding:2px 8px;outline:0}
 .port{direction:ltr;unicode-bidi:isolate;font-family:Consolas,monospace;color:var(--faint);margin-inline-start:6px}
 .icon{flex:none;align-self:flex-start;width:32px;height:32px;display:grid;place-items:center;background:none;border:1px solid transparent;border-radius:9px;color:var(--muted);cursor:pointer;font-size:15px}
@@ -127,10 +133,25 @@ select:focus{border-color:var(--o);outline:0}
 .banner{display:flex;align-items:center;gap:10px;background:#2A1A0D;border:1px solid #6B3A14;border-radius:12px;padding:9px 14px}
 .banner .btn:first-of-type{margin-inline-start:auto}
 .banner.ok{background:#11221A;border-color:#245A37}
-#logPanel{height:260px;flex:none;border-top:1px solid var(--line);background:#0B0806;display:flex;flex-direction:column}
-#logPanel[hidden]{display:none}
-.logHead{display:flex;justify-content:space-between;align-items:center;padding:6px 14px;border-bottom:1px solid var(--line)}
-#log{margin:0;flex:1;overflow:auto;padding:10px 14px;direction:ltr;text-align:left;font-size:12px;color:#E8D9C9;white-space:pre-wrap}
+/* ---------- project window ---------- */
+body.projectWin{height:100%}
+.projHead{gap:14px}
+.projHead .ttl h1{margin:0;font-size:18px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:text}
+.projHead .logo{width:38px;height:38px;border-radius:10px;font-size:19px}
+.projHead .tools{gap:6px;align-items:center}
+.projHead.running{box-shadow:inset 0 -2px 0 #2F6B45}
+.projInfo{flex:none;padding:14px 22px;display:flex;flex-direction:column;gap:10px;background:var(--bg);border-bottom:1px solid var(--line)}
+.projInfo .row{flex-wrap:wrap;gap:12px}
+.projInfo .path{flex:1;min-width:200px}
+.scriptSel{display:flex;align-items:center;gap:6px;color:var(--muted)}
+.logBox{flex:1;min-height:0;display:flex;flex-direction:column;background:#0B0806}
+.logHead{display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--line)}
+.logHead .btn{padding:4px 12px}
+#log{margin:0;flex:1;overflow:auto;padding:12px 16px;direction:ltr;text-align:left;font-size:12.5px;line-height:1.5;color:#E8D9C9;white-space:pre-wrap;word-break:break-word}
+#log[data-empty]::before{content:attr(data-empty);color:var(--faint);font-family:"Segoe UI",Tahoma,sans-serif}
+label.switch.small{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12.5px;cursor:pointer}
+label.switch.small input{margin:0}
+.rename.big{font-size:18px}
 
 /* ---------- dialogs ---------- */
 dialog{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:18px;padding:24px;width:min(480px,92vw);max-height:90vh}
@@ -149,7 +170,7 @@ dialog input:focus{border-color:var(--o);outline:0}
 .muted{color:var(--muted)}
 
 /* pill switch (as in the reference apps) */
-dialog label.switch{display:flex;gap:12px;align-items:flex-start;color:var(--text);font-size:14px;cursor:pointer;margin-bottom:14px}
+label.switch{display:flex;gap:12px;align-items:flex-start;color:var(--text);font-size:14px;cursor:pointer;margin-bottom:14px}
 label.switch:last-child{margin-bottom:0}
 label.switch input{appearance:none;flex:none;width:36px;height:20px;margin:2px 0 0;border-radius:99px;background:var(--field);border:1px solid var(--line);position:relative;cursor:pointer;transition:background .15s}
 label.switch input::after{content:"";position:absolute;top:2px;inset-inline-start:2px;width:14px;height:14px;border-radius:50%;background:var(--muted);transition:inset-inline-start .15s,background .15s}
@@ -159,12 +180,14 @@ label.switch input:disabled{opacity:.4}
 label.switch small{display:block;color:var(--muted);font-size:12px}
 
 /* settings window: sidebar + pane, like DeskPresence */
-dialog.settings{width:min(820px,95vw);height:min(620px,90vh);padding:0;display:none;overflow:hidden}
+dialog.settings{width:min(820px,95vw);height:min(640px,90vh);padding:0;display:none;overflow:hidden}
 dialog.settings[open]{display:flex}
 #setTabs{width:220px;flex:none;background:var(--side);padding:24px 12px;display:flex;flex-direction:column;gap:2px}
 #setTabs .side-h{margin-bottom:12px}
-.pane{flex:1;min-width:0;padding:24px 28px;display:flex;flex-direction:column;overflow:auto}
-.pane section{flex:1}
+.pane{flex:1;min-width:0;display:flex;flex-direction:column}
+.paneBody{flex:1;min-height:0;overflow:auto;padding:24px 28px 8px}
+/* the Done button never scrolls away */
+.paneFoot{flex:none;display:flex;gap:8px;padding:12px 28px;border-top:1px solid var(--line);background:var(--bg)}
 .pane section[hidden]{display:none}
 .verRow{margin-bottom:6px}
 .progress{height:8px;background:var(--field);border-radius:99px;overflow:hidden;margin:10px 0}
@@ -181,6 +204,11 @@ dialog.settings[open]{display:flex}
 /* category editor */
 .catBox{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px;margin-bottom:12px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 .catHead,.valRow{display:flex;gap:6px;align-items:center;width:100%}
+.catVals{display:flex;flex-direction:column;gap:6px;align-items:flex-start;width:100%}
+.catBox.closed .catVals{display:none}
+.chevBtn{flex:none;width:22px;height:30px;background:none;border:0;color:var(--muted);cursor:pointer;font-size:11px;transition:transform .15s}
+.chevBtn:hover{color:var(--text)}
+.lock{flex:none;width:38px;text-align:center;opacity:.6;cursor:help}
 .valRow{padding-inline-start:24px}
 .catBox input{flex:1;min-width:0;margin:0!important;background:var(--field);color:var(--text);border:1px solid transparent;border-radius:9px;padding:6px 10px!important}
 .catHead input[data-f=name]{font-weight:700}
@@ -203,8 +231,6 @@ dialog.settings[open]{display:flex}
 .epCustom input{flex:1;min-width:0;margin:0!important;padding:6px 10px!important}
 .epCustom .btn{padding:4px 12px}
 
-/* the phone remote serves this same page */
-.remote .local{display:none!important}
 @media (max-width:760px){
   .topbar{height:auto;flex-wrap:wrap;padding:10px 12px;gap:10px}
   .topbar input{order:3;flex-basis:100%;max-width:none;margin:0}
@@ -220,3 +246,4 @@ dialog.settings[open]{display:flex}
   #setTabs{width:auto;flex-direction:row;overflow:auto}
   #setTabs .side-h{display:none}
 }
+.card select,.card .path{cursor:auto}

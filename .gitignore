@@ -1,7 +1,4 @@
 node_modules/
 dist/
-mobile/android/
-mobile/node_modules/
-mobile/*.apk
 SHA256SUMS.txt
 *.log

@@ -1,6 +1,0 @@
-{
-  "appId": "app.ember.remote",
-  "appName": "Ember Remote",
-  "webDir": "www",
-  "server": { "androidScheme": "http", "cleartext": true, "allowNavigation": ["*"] }
-}

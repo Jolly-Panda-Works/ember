@@ -4,7 +4,7 @@
 
 # 🔥 Ember (اخگر)
 
-**A Windows launcher for your Node projects. Add a folder → Ember finds every project with a `dev` / `start` / `serve` / `preview` script, installs packages only when needed, and runs it with one click. When a project's code changes, Ember marks it "updated — test it".**
+**A Windows launcher for your Node projects, in English and Persian. Add a folder → Ember finds every project with a `dev` / `start` / `serve` / `preview` script, installs packages only when needed, and runs it with one click. When a project's code changes, Ember marks it "updated — test it".**
 
 [![Build](https://github.com/Jolly-Panda-Works/ember/actions/workflows/build.yml/badge.svg)](https://github.com/Jolly-Panda-Works/ember/actions/workflows/build.yml)
 [![Latest release](https://img.shields.io/github/v/release/Jolly-Panda-Works/ember?display_name=tag&color=F97316)](https://github.com/Jolly-Panda-Works/ember/releases/latest)
@@ -23,25 +23,22 @@
 | **Find projects** | Add one project folder, or a folder full of projects. Every `package.json` with a runnable script shows up as a card. |
 | **Install only when needed** | Ember runs `npm` / `pnpm` / `yarn` / `bun install` only when `node_modules` is missing or older than the lock file. |
 | **One port per project** | Every project keeps its own port. If that port is busy when you press ▶, Ember moves to the next free one and passes it to the dev server (`--port` / `-p` for Vite, Next, Astro, Nuxt, Angular, … and the `PORT` variable for the rest). Change it in ✎. |
-| **One click to run** | Pick the script, press ▶. The local URL is detected from the output and opens with 🔗. Live log in the bottom panel. |
-| **Your own categories** | Out of the box there is one category, *Project type* (website, game, mobile, desktop, API, other). Add, rename or delete categories (client, status, …) and their values, each with an icon and a name, in ⚙️ Settings → *Categories*. Every category gets an automatic **All** item. Filter by any of them in the sidebar; search matches them too. |
+| **One click to run** | Pick the script, press ▶. The local URL is detected from the output and opens with 🔗. |
+| **Project window** | Click a project (or 📜 Log) to open its own window: name and buttons on top, the live log below (follow, copy, clear). |
+| **Your own categories** | Out of the box there is one category, *Project type* (website, game, mobile, desktop, API, other). Add, rename or delete categories (client, status, …) and their values, each with an icon and a name, in ⚙️ Settings → *Categories*. Every category gets an automatic **All** item; groups can be collapsed. *Project type* is the default category and cannot be deleted. Filter by any of them in the sidebar; search matches them too. |
 | **Project logos** | Each card shows the project's own favicon/logo when Ember finds one (`public/favicon.svg`, `public/logo.png`, …), or a picture you choose (✎ → Logo). Without one, the category icon or the first letter is shown. |
 | **"Updated — test it" badge** | When a project changed since you last ran it in Ember (a new commit, or newer files for folders without git), its card gets a 🆕 badge and a Windows notification. Running it (or *✓ Tested*) clears the badge. |
 | **New commits on GitHub** | Ember runs `git fetch` every few minutes (default 15). Commits you have not pulled yet show as *⬇ N new commits* with a **Pull** button (`git pull --ff-only`). |
-| **Settings** | General (notifications, stay in tray, start with Windows), categories, project updates, Ember updates, phone access, About. |
+| **Settings** | General (language: فارسی / English, notifications, stay in tray, start with Windows), categories, project updates, Ember updates, About. |
 | **Updates itself** | Checks GitHub Releases on start and every 6 hours and downloads a new version in the background (verified against `SHA256SUMS.txt`). *Restart and update* installs it silently, with no setup wizard, and Ember opens again a few seconds later; or it installs when you close Ember. The portable exe swaps itself in place. |
-| **Phone remote** | The *Ember Remote* APK starts and stops projects from your phone over Wi-Fi (PIN protected, local network only). |
 
 ## Download
 
 1. Download **[Ember-Setup.exe](https://github.com/Jolly-Panda-Works/ember/releases/latest/download/Ember-Setup.exe)** and run it.
    Prefer no installer? **[Ember-Portable.exe](https://github.com/Jolly-Panda-Works/ember/releases/latest/download/Ember-Portable.exe)** runs without installing.
 2. Press **＋ Add project folder**.
-3. Optional, for the phone: install **[Ember-Remote.apk](https://github.com/Jolly-Panda-Works/ember/releases/latest/download/Ember-Remote.apk)**, then in Ember → ⚙️ Settings → *Phone access* turn it on and type the IP and PIN into the app.
 
 > Windows SmartScreen may warn about an unsigned app the first time: *More info → Run anyway*. The SHA-256 checksums of every release are in `SHA256SUMS.txt`.
-
-Dev servers must listen on the LAN to be opened from the phone (`vite --host`, `next dev -H 0.0.0.0`, …).
 
 ## How "updated" works
 
@@ -56,7 +53,7 @@ Every push to `main` builds Ember on GitHub Actions and publishes a **GitHub Rel
 
 | Push to | Version | Result |
 |---|---|---|
-| `main` | `1.0.<run number>` | tag + public release with `Ember-Setup.exe`, `Ember-Portable.exe`, `Ember-Remote.apk`, `SHA256SUMS.txt` |
+| `main` | `1.0.<run number>` | tag + public release with `Ember-Setup.exe`, `Ember-Portable.exe`, `SHA256SUMS.txt` |
 | a tag `vX.Y.Z` | `X.Y.Z` | release with that version |
 | any other branch / pull request | `1.0.0-dev.<run>` | build only (Actions → run → Artifacts, kept 14 days) |
 

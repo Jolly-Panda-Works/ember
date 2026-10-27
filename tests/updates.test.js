@@ -12,19 +12,17 @@ test('compareVersions orders releases and dev builds', () => {
   assert.strictEqual(compareVersions('garbage', '1.0.0'), 0);
 });
 
-test('pickRelease finds the installer, portable exe and apk', () => {
+test('pickRelease finds the installer and the portable exe', () => {
   const r = pickRelease({
     tag_name: 'v1.0.7', html_url: 'https://example/r', body: 'notes',
     assets: [
       { name: 'Ember-Setup.exe', browser_download_url: 'https://example/setup' },
       { name: 'Ember-Portable.exe', browser_download_url: 'https://example/portable' },
-      { name: 'Ember-Remote.apk', browser_download_url: 'https://example/apk' },
     ],
   });
   assert.strictEqual(r.version, '1.0.7');
   assert.strictEqual(r.setupUrl, 'https://example/setup');
   assert.strictEqual(r.portableUrl, 'https://example/portable');
-  assert.strictEqual(r.apkUrl, 'https://example/apk');
 });
 
 test('fetchLatest reports an available update', async () => {

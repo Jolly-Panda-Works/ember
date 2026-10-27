@@ -1,39 +1,10 @@
-const $ = (s) => document.querySelector(s);
-const STATUS = { stopped: 'متوقف', installing: 'در حال نصب پکیج…', running: 'در حال اجرا' };
-
-/* ---- API: Electron (IPC) or phone/browser (HTTP) ---- */
-const isRemote = !window.ember;
-const PIN = new URLSearchParams(location.search).get('pin') || sessionStorage.getItem('pin') || '';
-if (PIN) sessionStorage.setItem('pin', PIN);
-async function rq(method, url, body) {
-  const r = await fetch(url, { method, headers: { 'x-pin': PIN, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
-  if (r.status === 401) { document.body.innerHTML = '<p style="padding:40px">PIN اشتباه است یا دسترسی موبایل در برنامه‌ی ویندوز خاموش است.</p>'; throw new Error('pin'); }
-  return r.json();
-}
-const api = window.ember || {
-  list: () => rq('GET', '/api/projects'),
-  categories: () => rq('GET', '/api/categories'),
-  settings: () => rq('GET', '/api/info'),
-  start: (id, script) => rq('POST', '/api/start', { id, script }),
-  stop: (id) => rq('POST', '/api/stop', { id }),
-  logs: (id) => rq('GET', '/api/logs?id=' + id),
-  onEvent: (cb) => { const es = new EventSource('/api/events?pin=' + encodeURIComponent(PIN)); es.onmessage = (e) => cb(JSON.parse(e.data)); },
-};
-document.body.classList.toggle('remote', isRemote);
-document.body.classList.toggle('win', !isRemote && api.platform === 'win32');   // page top bar = window title bar
+/* Main window: the project list, the edit dialog and Settings. Shared helpers are in common.js. */
 
 /* ---- state ---- */
-let items = [], cats = [], logId = null, editing = null;
+let items = [], cats = [], editing = null, settings = null;
 let filter = { updated: false, cats: {}, q: '' };   // cats: categoryId -> valueId ('' = not set)
-const fa = new Intl.RelativeTimeFormat('fa', { numeric: 'auto' });
-function ago(ms) {
-  if (!ms) return '';
-  const sec = (ms - Date.now()) / 1000;
-  for (const [u, n] of [['day', 86400], ['hour', 3600], ['minute', 60]]) if (Math.abs(sec) >= n) return fa.format(Math.round(sec / n), u);
-  return fa.format(0, 'minute');
-}
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const valueOf = (i, c) => c.values.find((v) => v.id === (i.cats || {})[c.id]);
+let collapsed = new Set(store.get('ember.collapsed', []));       // sidebar groups that are closed
+let collapsedEdit = new Set(store.get('ember.collapsedEdit', [])); // categories closed in Settings
 
 function visible() {
   const q = filter.q.toLowerCase();
@@ -43,99 +14,74 @@ function visible() {
     (!q || [i.name, i.path, ...cats.map((c) => (valueOf(i, c) || {}).name || '')].join(' ').toLowerCase().includes(q)));
 }
 
+/* ---- sidebar ---- */
 function renderSide() {
   const nav = (attrs, label, n, on) => `<button class="nav ${on ? 'active' : ''}" ${attrs}>${label}<span class="n">${n}</span></button>`;
   const upd = items.filter((i) => i.updated || i.behind > 0).length;
   const noFilter = !filter.updated && !Object.keys(filter.cats).length;
-  let h = `<div class="group"><h4>پروژه‌ها</h4>${nav('data-all', '📁 همه پروژه‌ها', items.length, noFilter)}` +
-    nav('data-updated', '🆕 بروز شده‌ها', upd, filter.updated) + '</div>';
+  const group = (key, title, body, extra = '') => {
+    const closed = collapsed.has(key);
+    return `<div class="group ${closed ? 'closed' : ''}"><h4 data-toggle="${esc(key)}" title="${t('side.collapse')}"><span class="chev">▾</span>${title}${extra}</h4><div class="gBody">${body}</div></div>`;
+  };
+  let h = group('__projects', t('side.projects'),
+    nav('data-all', '📁 ' + t('side.allProjects'), items.length, noFilter) + nav('data-updated', '🆕 ' + t('side.updated'), upd, filter.updated));
   for (const c of cats) {
     const none = items.filter((i) => !valueOf(i, c)).length;
-    h += `<div class="group"><h4>${esc(c.icon)} ${esc(c.name)}<button class="mini local" data-manage title="مدیریت دسته‌بندی‌ها">✎</button></h4>` +
+    h += group(c.id, `${esc(c.icon)} ${esc(c.name)}`,
       // "All" is automatic in every category: it clears that category's filter
-      nav(`data-cat="${esc(c.id)}" data-val="*"`, '✦ همه', items.length, !(c.id in filter.cats)) +
+      nav(`data-cat="${esc(c.id)}" data-val="*"`, '✦ ' + t('side.all'), items.length, !(c.id in filter.cats)) +
       c.values.map((v) => nav(`data-cat="${esc(c.id)}" data-val="${esc(v.id)}"`, `${esc(v.icon)} ${esc(v.name)}`,
         items.filter((i) => (i.cats || {})[c.id] === v.id).length, filter.cats[c.id] === v.id)).join('') +
-      (none && c.values.length ? nav(`data-cat="${esc(c.id)}" data-val=""`, `— بدون ${esc(c.name)}`, none, filter.cats[c.id] === '') : '') +
-      '</div>';
+      (none && c.values.length ? nav(`data-cat="${esc(c.id)}" data-val=""`, '— ' + t('side.none', { name: esc(c.name) }), none, filter.cats[c.id] === '') : ''),
+      `<button class="mini" data-manage title="${t('side.manage')}">✎</button>`);
   }
-  h += '<button class="btn ghost local" style="width:100%" data-manage>＋ دسته‌بندی جدید</button>';
+  h += `<button class="btn ghost" style="width:100%" data-manage>＋ ${t('side.newCat')}</button>`;
   $('#groups').innerHTML = h;
 }
 
-// project logo: the picture, else the icon of its first category value, else its first letter
-function logoHtml(i, big) {
-  const cls = `logo${big ? ' big' : ''}`;
-  if (i.logoUrl) {
-    const src = isRemote ? `/api/logo?id=${encodeURIComponent(i.id)}&pin=${encodeURIComponent(PIN)}&v=${i.logoV || 0}` : i.logoUrl;
-    return `<div class="${cls}"><img src="${esc(src)}" alt="" onerror="this.parentNode.textContent='${esc(initial(i))}'"></div>`;
-  }
-  const v = cats.map((c) => valueOf(i, c)).find(Boolean);
-  return `<div class="${cls}">${esc(v ? v.icon : initial(i))}</div>`;
-}
-const initial = (i) => ([...(i.name || '?').replace(/[^\p{L}\p{N}]/gu, '')][0] || '?').toUpperCase();
-
+/* ---- project cards ---- */
 function card(i) {
   const busy = i.status !== 'stopped';
-  const pkgState = !i.exists ? '<span class="bad">⚠ پوشه یا package.json پیدا نشد</span>'
-    : i.needsInstall ? '<span class="warn">⚠ نیاز به نصب پکیج (خودکار)</span>' : '<span class="ok">✓ پکیج‌ها آماده است</span>';
-  const when = i.updateTime ? ` · ${ago(i.updateTime)}` : '';
-  const upd = (i.updated ? `<div class="upd">
-      <div><b>🆕 بروز شده — تست کنید</b><small>${i.updateSubject ? esc(i.updateSubject) : i.updateKind === 'files' ? 'فایل‌های پروژه تغییر کرده‌اند' : ''}${when}</small></div>
-      <button class="btn ghost local" data-act="tested" title="علامت را بردار">✓ تست شد</button></div>` : '') +
-    (i.behind > 0 ? `<div class="upd git">
-      <div><b>⬇ ${i.behind} کامیت جدید در <code>${esc(i.upstream)}</code></b><small>${esc(i.remoteSubject)}</small></div>
-      <button class="btn local" data-act="pull">دریافت (pull)</button></div>` : '') +
-    (i.fetchError ? `<div class="hint bad" title="${esc(i.fetchError)}">⚠ git fetch ناموفق بود</div>` : '');
-  const tags = cats.map((c) => valueOf(i, c)).filter(Boolean);
-  return `<article class="card ${i.status} ${i.updated || i.behind > 0 ? 'updated' : ''}" data-id="${i.id}">
-    <div class="top">${logoHtml(i)}
-      <div class="ttl"><h3 class="name" title="${isRemote ? esc(i.name) : 'برای تغییر نام دوبار کلیک کنید'}">${esc(i.name)}</h3>
-        <div class="state"><span class="dot"></span>${STATUS[i.status]}${i.port ? `<span class="port" title="پورت">:${i.port}</span>` : ''}</div></div>
-      ${i.updated ? '<span class="tag new">🆕 بروز شده</span>' : ''}
-      <button class="icon local" data-act="edit" title="ویرایش (نام، لوگو، دسته‌بندی، پورت)">✎</button></div>
-    ${tags.length ? `<div class="tags">${tags.map((v) => `<span class="tag">${esc(v.icon)} ${esc(v.name)}</span>`).join('')}</div>` : ''}
+  const tags = tagsHtml(i, cats);
+  return `<article class="card ${i.status} ${i.updated || i.behind > 0 ? 'updated' : ''}" data-id="${i.id}" title="${t('card.openTip')}">
+    <div class="top">${logoHtml(i, cats)}
+      <div class="ttl"><h3 class="name" title="${t('card.renameTip')}">${esc(i.name)}</h3>
+        <div class="state"><span class="dot"></span>${statusText(i.status)}${portHtml(i)}</div></div>
+      ${i.updated ? `<span class="tag new">${t('card.updated')}</span>` : ''}
+      <button class="icon" data-act="edit" title="${t('card.edit')}">✎</button></div>
+    ${tags ? `<div class="tags">${tags}</div>` : ''}
     <div class="pathRow"><div class="path" title="${esc(i.path)}">${esc(i.path)}</div>
-      <button class="icon local" data-act="folder" title="باز کردن پوشه">📂</button></div>
+      <button class="icon" data-act="folder" title="${t('card.folder')}">📂</button></div>
     <div class="row">
       <select ${busy ? 'disabled' : ''}>${i.scripts.map((s) => `<option ${s === i.script ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>
-      <span class="pm">${i.pm}</span>${pkgState}
-    </div>${upd}
+      <span class="pm">${i.pm}</span>${pkgHtml(i)}
+    </div>${updHtml(i)}
     <div class="actions">
-      ${busy ? '<button class="btn danger" data-act="stop">■ توقف</button>'
-             : `<button class="btn primary" data-act="start" ${i.exists ? '' : 'disabled'}>▶ اجرا</button>`}
-      ${i.url ? '<button class="btn" data-act="open">🔗 باز کردن</button>' : ''}
-      <button class="btn ghost" data-act="logs">📜 لاگ</button>
+      ${busy ? `<button class="btn danger" data-act="stop">${t('card.stop')}</button>`
+             : `<button class="btn primary" data-act="start" ${i.exists ? '' : 'disabled'}>${t('card.run')}</button>`}
+      ${i.url ? `<button class="btn" data-act="open">${t('card.open')}</button>` : ''}
+      <button class="btn ghost" data-act="window">${t('card.log')}</button>
     </div></article>`;
 }
 
 function render() {
   renderSide();
   const v = visible();
-  $('#grid').innerHTML = v.length ? v.map(card).join('')
-    : `<div class="empty">${items.length ? 'پروژه‌ای با این فیلتر پیدا نشد.' : 'هنوز پروژه‌ای اضافه نشده. از نوار بالا «افزودن پروژه» را بزنید و یک پوشه‌ی پروژه (یا پوشه‌ای که چند پروژه دارد) را انتخاب کنید.'}</div>`;
-  // page title = the active filters, e.g. "بازی · Jolly Panda"
+  $('#grid').innerHTML = v.length ? v.map(card).join('') : `<div class="empty">${t(items.length ? 'page.noMatch' : 'page.empty')}</div>`;
+  // page title = the active filters, e.g. "Game · Jolly Panda"
   const parts = cats.filter((c) => c.id in filter.cats).map((c) => {
     const val = c.values.find((x) => x.id === filter.cats[c.id]);
-    return val ? `${val.icon} ${val.name}` : `بدون ${c.name}`;
+    return val ? `${val.icon} ${val.name}` : t('side.none', { name: c.name });
   });
-  if (filter.updated) parts.unshift('🆕 بروز شده‌ها');
-  $('#pageTitle').textContent = parts.length ? parts.join(' · ') : 'همه پروژه‌ها';
+  if (filter.updated) parts.unshift('🆕 ' + t('side.updated'));
+  $('#pageTitle').textContent = parts.length ? parts.join(' · ') : t('page.all');
   const run = items.filter((i) => i.status === 'running').length;
-  $('#stats').textContent = `${v.length === items.length ? items.length : `${v.length} از ${items.length}`} پروژه · ${run} در حال اجرا`;
+  $('#stats').textContent = v.length === items.length ? t('page.stats', { n: items.length, run }) : t('page.statsOf', { v: v.length, n: items.length, run });
 }
 
 async function reload() { [items, cats] = await Promise.all([api.list(), api.categories()]); render(); }
 
-/* ---- logs ---- */
-async function showLog(i) {
-  logId = i.id; $('#logTitle').textContent = i.name; $('#logPanel').hidden = false;
-  $('#log').textContent = (await api.logs(i.id)).join('');
-  $('#log').scrollTop = 1e9;
-}
-$('#logClose').onclick = () => { logId = null; $('#logPanel').hidden = true; };
-
-/* ---- events ---- */
+/* ---- events from the app ---- */
 api.onEvent((e) => {
   if (e.type === 'state') {
     const i = items.find((x) => x.id === e.id);
@@ -147,20 +93,25 @@ api.onEvent((e) => {
     filter = { updated: false, cats: {}, q: '' }; $('#q').value = ''; render();
     const el = document.querySelector(`.card[data-id="${e.id}"]`);
     if (el) { el.scrollIntoView({ block: 'center' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1600); }
-  } else if (e.type === 'categories') {
+  } else if (e.type === 'categories' || e.type === 'projects') {
     reload();
+  } else if (e.type === 'edit') {
+    const i = items.find((x) => x.id === e.id); if (i) openEdit(i);
   } else if (e.type === 'openSettings') {
     openSettings(e.tab);
-  } else if (e.type === 'log' && e.id === logId) {
-    const el = $('#log'); const atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-    el.textContent += e.text; if (atEnd) el.scrollTop = 1e9;
   }
 });
 
 /* ---- clicks ---- */
 $('#groups').onclick = (e) => {
-  const b = e.target.closest('button'); if (!b) return;
+  const b = e.target.closest('button, h4'); if (!b) return;
   if (b.hasAttribute('data-manage')) return openSettings('cats');
+  if (b.dataset.toggle) {
+    const k = b.dataset.toggle;
+    collapsed.has(k) ? collapsed.delete(k) : collapsed.add(k);
+    store.set('ember.collapsed', [...collapsed]);
+    return renderSide();
+  }
   if (b.hasAttribute('data-all')) filter = { ...filter, updated: false, cats: {} };
   else if (b.hasAttribute('data-updated')) filter.updated = !filter.updated;
   else if (b.dataset.cat) {
@@ -170,26 +121,23 @@ $('#groups').onclick = (e) => {
   render();
 };
 $('#q').oninput = (e) => { filter.q = e.target.value; render(); };
-$('#grid').onclick = (e) => {
-  const b = e.target.closest('[data-act]'); if (!b) return;
-  const c = b.closest('.card'); const i = items.find((x) => x.id === c.dataset.id);
-  switch (b.dataset.act) {
-    case 'start': api.start(i.id, c.querySelector('select').value); break;
-    case 'stop': api.stop(i.id); break;
-    case 'open': isRemote ? window.open(`http://${location.hostname}:${new URL(i.url).port}`) : api.openUrl(i.url); break;
-    case 'logs': showLog(i); break;
-    case 'folder': api.openFolder(i.id); break;
-    case 'edit': openEdit(i); break;
-    case 'tested': api.markTested(i.id).then((l) => { items = l; render(); }); break;
-    case 'pull':
-      b.disabled = true; b.textContent = 'در حال دریافت…';
-      api.pull(i.id).then((r) => { if (!r.ok) { alert('pull ناموفق بود:\n' + r.err); showLog(i); } reload(); });
-      break;
+$('#grid').onclick = async (e) => {
+  const c = e.target.closest('.card'); if (!c) return;
+  const i = items.find((x) => x.id === c.dataset.id);
+  const b = e.target.closest('[data-act]');
+  if (!b) {
+    // a click anywhere else on the card opens its window (not on the script list or while renaming)
+    if (!e.target.closest('select, input, h3.name')) api.openProject(i.id);
+    return;
   }
+  if (b.dataset.act === 'edit') return openEdit(i);
+  if (b.dataset.act === 'window') return api.openProject(i.id);
+  const r = await projectAction(b.dataset.act, i, b, c.querySelector('select').value);
+  if (Array.isArray(r)) { items = r; render(); }
 };
 // double-click a project name to rename it in place
 $('#grid').ondblclick = (e) => {
-  const h = e.target.closest('h3.name'); if (!h || isRemote) return;
+  const h = e.target.closest('h3.name'); if (!h) return;
   const i = items.find((x) => x.id === h.closest('.card').dataset.id);
   const inp = document.createElement('input');
   inp.className = 'rename'; inp.value = i.name; inp.maxLength = 80;
@@ -203,10 +151,10 @@ $('#grid').ondblclick = (e) => {
   };
   inp.onkeydown = (k) => { if (k.key === 'Enter') finish(true); else if (k.key === 'Escape') finish(false); };
   inp.onblur = () => finish(true);
+  inp.onclick = (k) => k.stopPropagation();
 };
 $('#grid').onchange = (e) => {
-  if (e.target.classList.contains('rename')) return;
-  if (e.target.tagName !== 'SELECT' || isRemote) return;
+  if (e.target.tagName !== 'SELECT') return;
   const i = items.find((x) => x.id === e.target.closest('.card').dataset.id);
   i.script = e.target.value; api.update(i.id, { script: i.script });
 };
@@ -221,17 +169,12 @@ function openEdit(i) {
   $('#eCats').innerHTML = cats.map((c) => `<label>${esc(c.icon)} ${esc(c.name)}
     <select data-cid="${esc(c.id)}"><option value="">—</option>${c.values.map((v) =>
       `<option value="${esc(v.id)}" ${(i.cats || {})[c.id] === v.id ? 'selected' : ''}>${esc(v.icon)} ${esc(v.name)}</option>`).join('')}</select></label>`).join('') ||
-    '<p class="hint">دسته‌بندی‌ای تعریف نشده. از تنظیمات ← دسته‌بندی‌ها بسازید.</p>';
-  $('#editDlg').showModal();
+    `<p class="hint">${t('edit.noCats')}</p>`;
+  if (!$('#editDlg').open) $('#editDlg').showModal();
 }
-const LOGO_HINT = {
-  auto: 'خودکار: favicon یا لوگوی خود پروژه (مثلاً public/favicon.svg) اگر پیدا شود.',
-  custom: 'تصویری که خودتان انتخاب کرده‌اید (یک کپی نگه داشته می‌شود).',
-  none: 'بدون تصویر: آیکون دسته‌بندی یا حرف اول نام نشان داده می‌شود.',
-};
 function fillLogo(i) {
-  $('#eLogo').outerHTML = logoHtml(i, true).replace('<div class="logo big"', '<div class="logo big" id="eLogo"');
-  $('#eLogoHint').textContent = LOGO_HINT[i.logoMode] + (i.logoMode === 'auto' && !i.logoUrl ? ' (چیزی پیدا نشد)' : '');
+  $('#eLogo').outerHTML = logoHtml(i, cats, 'big').replace('<div class="logo big"', '<div class="logo big" id="eLogo"');
+  $('#eLogoHint').textContent = t('edit.hint.' + i.logoMode) + (i.logoMode === 'auto' && !i.logoUrl ? t('edit.hint.autoNone') : '');
   $('#eLogoAuto').hidden = i.logoMode === 'auto';
   $('#eLogoNone').hidden = i.logoMode === 'none';
 }
@@ -251,7 +194,7 @@ $('#eSave').onclick = async () => {
   $('#editDlg').close(); render();
 };
 $('#eRemove').onclick = async () => {
-  if (!confirm('این پروژه از لیست حذف شود؟ (فایل‌ها پاک نمی‌شوند)')) return;
+  if (!confirm(t('edit.removeQ'))) return;
   items = await api.remove(editing.id); $('#editDlg').close(); render();
 };
 
@@ -259,32 +202,41 @@ $('#eRemove').onclick = async () => {
 // Typing only changes the data and saves a moment later; the editor is rebuilt only when rows
 // are added or removed, so a click into the next field is never lost.
 const EMOJI_GROUPS = [
-  ['😀', 'چهره و آدم‌ها', '😀😃😄😁😆😅😂🤣😊😇🙂😉😍🥰😘😎🤓🧐🤔🤩🥳😏😴🤯😱🤠🥸😈👻💀🤖👽👾💩🙈👋👍👎👏🙌🤝💪🧠👀👤👥🧑‍💻👨‍💻👩‍💻🧑‍🎨🧑‍🏫🧑‍💼🧑‍🔬🧑‍🚀🧙🦸🥷👑'],
-  ['🐼', 'حیوانات و طبیعت', '🐼🐶🐱🦊🐻🐨🐯🦁🐮🐷🐸🐵🐔🐧🐦🦉🦄🐝🦋🐢🐍🦖🐉🐙🦀🐠🐬🐳🦈🌵🌲🌳🌴🌱🍀🍁🌸🌹🌻🌈☀️🌙⭐🌟✨⚡🔥💧🌊❄️☁️🌍'],
-  ['🍕', 'غذا', '🍎🍊🍋🍌🍉🍇🍓🍒🍑🥑🥕🌽🍞🧀🍔🍟🍕🌭🌮🍣🍜🍩🍪🎂🍰🍫🍿☕🍵🧃🍺🍷'],
-  ['🎮', 'بازی و سرگرمی', '🎮🕹️🎲♟️🧩🎯🎳🏆🥇🏅⚽🏀🏈⚾🎾🏐🏓🥊⛳🏁🎨🎭🎬🎤🎧🎵🎹🎸🥁🎻📷🎥🪄🃏'],
-  ['🏠', 'مکان و سفر', '🏠🏡🏢🏬🏭🏫🏥🏦🏪🏛️⛪🕌🏰🗼🗽🌆🏙️🌉🚗🚕🚌🚀✈️🚁🚢⛵🚲🛴🚦🗺️🧭⛺🏖️🏔️🌋'],
-  ['💼', 'کار و اشیا', '💼📁📂🗂️📊📈📉📋📌📎✏️🖊️📝📚📖🔖🏷️💡🔦🔧🔨⚙️🛠️🧪🔬🔭💻🖥️⌨️🖱️📱☎️📡🔋🔌💾💿📦🛒💳💰💎🔑🔒🔓🔔📣✉️📅⏰⌛🧲🧰🌐🔗🗄️🧾'],
-  ['❤️', 'نماد و رنگ', '❤️🧡💛💚💙💜🖤🤍🤎💔✅☑️✔️❌⭕❗❓⚠️🚫⛔🔴🟠🟡🟢🔵🟣🟤⚫⚪🟥🟧🟨🟩🟦🟪⬛⬜🔶🔷🔺🔻💠🔘♻️⚜️🆕🆗🆙🆒🆓🔝🔜💯🔤#️⃣1️⃣2️⃣3️⃣4️⃣5️⃣🅰️🅱️'],
-  ['🏳️', 'پرچم', '🇮🇷🇺🇸🇬🇧🇩🇪🇫🇷🇹🇷🇦🇪🇨🇦🇯🇵🇨🇳🇮🇳🇷🇺🇮🇹🇪🇸🇳🇱🇸🇪🇦🇺🇧🇷🇰🇷🇦🇫🇮🇶🇸🇦🏳️🏴🏁🚩'],
-].map(([tab, name, list]) => ({ tab, name, list: [...new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(list)].map((x) => x.segment) }));
+  ['😀', '😀😃😄😁😆😅😂🤣😊😇🙂😉😍🥰😘😎🤓🧐🤔🤩🥳😏😴🤯😱🤠🥸😈👻💀🤖👽👾💩🙈👋👍👎👏🙌🤝💪🧠👀👤👥🧑‍💻👨‍💻👩‍💻🧑‍🎨🧑‍🏫🧑‍💼🧑‍🔬🧑‍🚀🧙🦸🥷👑'],
+  ['🐼', '🐼🐶🐱🦊🐻🐨🐯🦁🐮🐷🐸🐵🐔🐧🐦🦉🦄🐝🦋🐢🐍🦖🐉🐙🦀🐠🐬🐳🦈🌵🌲🌳🌴🌱🍀🍁🌸🌹🌻🌈☀️🌙⭐🌟✨⚡🔥💧🌊❄️☁️🌍'],
+  ['🍕', '🍎🍊🍋🍌🍉🍇🍓🍒🍑🥑🥕🌽🍞🧀🍔🍟🍕🌭🌮🍣🍜🍩🍪🎂🍰🍫🍿☕🍵🧃🍺🍷'],
+  ['🎮', '🎮🕹️🎲♟️🧩🎯🎳🏆🥇🏅⚽🏀🏈⚾🎾🏐🏓🥊⛳🏁🎨🎭🎬🎤🎧🎵🎹🎸🥁🎻📷🎥🪄🃏'],
+  ['🏠', '🏠🏡🏢🏬🏭🏫🏥🏦🏪🏛️⛪🕌🏰🗼🗽🌆🏙️🌉🚗🚕🚌🚀✈️🚁🚢⛵🚲🛴🚦🗺️🧭⛺🏖️🏔️🌋'],
+  ['💼', '💼📁📂🗂️📊📈📉📋📌📎✏️🖊️📝📚📖🔖🏷️💡🔦🔧🔨⚙️🛠️🧪🔬🔭💻🖥️⌨️🖱️📱☎️📡🔋🔌💾💿📦🛒💳💰💎🔑🔒🔓🔔📣✉️📅⏰⌛🧲🧰🌐🔗🗄️🧾'],
+  ['❤️', '❤️🧡💛💚💙💜🖤🤍🤎💔✅☑️✔️❌⭕❗❓⚠️🚫⛔🔴🟠🟡🟢🔵🟣🟤⚫⚪🟥🟧🟨🟩🟦🟪⬛⬜🔶🔷🔺🔻💠🔘♻️⚜️🆕🆗🆙🆒🆓🔝🔜💯🔤#️⃣1️⃣2️⃣3️⃣4️⃣5️⃣🅰️🅱️'],
+  ['🏳️', '🇮🇷🇺🇸🇬🇧🇩🇪🇫🇷🇹🇷🇦🇪🇨🇦🇯🇵🇨🇳🇮🇳🇷🇺🇮🇹🇪🇸🇳🇱🇸🇪🇦🇺🇧🇷🇰🇷🇦🇫🇮🇶🇸🇦🏳️🏴🏁🚩'],
+].map(([tab, list], gi) => ({ tab, name: t('emoji.g' + gi), list: [...new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(list)].map((x) => x.segment) }));
 
 function renderCats() {
   const used = (cid, vid) => items.filter((i) => (i.cats || {})[cid] === vid).length;
-  $('#catList').innerHTML = cats.map((c, ci) => `<div class="catBox" data-ci="${ci}">
+  $('#catList').innerHTML = cats.map((c, ci) => {
+    const closed = collapsedEdit.has(c.id);
+    const locked = c.id === 'type';   // the default category cannot be deleted
+    return `<div class="catBox ${closed ? 'closed' : ''}" data-ci="${ci}">
       <div class="catHead">
-        <button type="button" class="icoBtn" data-f="icon" title="انتخاب آیکون">${esc(c.icon)}</button>
-        <input data-f="name" value="${esc(c.name)}" placeholder="نام دسته‌بندی" maxlength="40">
-        <button class="btn ghost" data-c="delCat" title="حذف دسته‌بندی">🗑</button>
+        <button type="button" class="chevBtn" data-c="toggle" title="${t('side.collapse')}">▾</button>
+        <button type="button" class="icoBtn" data-f="icon" title="${t('cat.pickIcon')}">${esc(c.icon)}</button>
+        <input data-f="name" value="${esc(c.name)}" data-i18n-ph="cat.namePh" placeholder="${t('cat.namePh')}" maxlength="40">
+        ${closed ? `<span class="n">${t('cat.noValues', { n: c.values.length })}</span>` : ''}
+        ${locked ? `<span class="lock" title="${t('cat.locked')}">🔒</span>`
+                 : `<button class="btn ghost" data-c="delCat" title="${t('cat.delete')}">🗑</button>`}
       </div>
-      <div class="catAll">✦ همه — خودکار، همیشه اول لیست</div>
-      ${c.values.map((v, vi) => `<div class="valRow" data-vi="${vi}">
-        <button type="button" class="icoBtn" data-vf="icon" title="انتخاب آیکون">${esc(v.icon)}</button>
-        <input data-vf="name" value="${esc(v.name)}" placeholder="نام" maxlength="40">
-        <span class="n" title="تعداد پروژه">${used(c.id, v.id)}</span>
-        <button class="btn ghost" data-c="delVal" title="حذف">✕</button></div>`).join('')}
-      <button class="btn ghost" data-c="addVal">＋ مقدار جدید</button>
-    </div>`).join('') || '<p class="hint">هیچ دسته‌بندی‌ای نیست.</p>';
+      <div class="catVals">
+        <div class="catAll">${t('cat.allAuto')}</div>
+        ${c.values.map((v, vi) => `<div class="valRow" data-vi="${vi}">
+          <button type="button" class="icoBtn" data-vf="icon" title="${t('cat.pickIcon')}">${esc(v.icon)}</button>
+          <input data-vf="name" value="${esc(v.name)}" placeholder="${t('cat.valuePh')}" maxlength="40">
+          <span class="n" title="${t('cat.count')}">${used(c.id, v.id)}</span>
+          <button class="btn ghost" data-c="delVal" title="${t('cat.deleteVal')}">✕</button></div>`).join('')}
+        <button class="btn ghost" data-c="addVal">${t('cat.addValue')}</button>
+      </div>
+    </div>`;
+  }).join('') || `<p class="hint">${t('cat.empty')}</p>`;
 }
 // the object (category or value) an input/icon button in the editor belongs to
 function catTarget(el) {
@@ -307,8 +259,8 @@ async function saveCats(rebuild, focus) {
   if (focus) { const el = document.querySelector(focus); if (el) { el.focus(); el.select(); } }
 }
 $('#catList').addEventListener('input', (e) => {
-  const t = catTarget(e.target); if (!t) return;
-  t.obj[t.key] = e.target.value;
+  const tg = catTarget(e.target); if (!tg) return;
+  tg.obj[tg.key] = e.target.value;
   queueCatSave();
 });
 $('#catList').onclick = (e) => {
@@ -316,21 +268,25 @@ $('#catList').onclick = (e) => {
   if (ib) return openPicker(ib);
   const b = e.target.closest('[data-c]'); if (!b) return;
   const ci = Number(b.closest('.catBox').dataset.ci), c = cats[ci];
-  if (b.dataset.c === 'addVal') {
-    c.values.push({ icon: '🔹', name: 'مقدار جدید' });
+  if (b.dataset.c === 'toggle') {
+    collapsedEdit.has(c.id) ? collapsedEdit.delete(c.id) : collapsedEdit.add(c.id);
+    store.set('ember.collapsedEdit', [...collapsedEdit]);
+    renderCats();
+  } else if (b.dataset.c === 'addVal') {
+    c.values.push({ icon: '🔹', name: t('cat.newValue') });
     saveCats(true, `.catBox[data-ci="${ci}"] .valRow:last-of-type [data-vf=name]`);
   } else if (b.dataset.c === 'delVal') {
     const v = c.values[b.closest('.valRow').dataset.vi];
     const n = items.filter((i) => (i.cats || {})[c.id] === v.id).length;
-    if (n && !confirm(`«${v.name}» به ${n} پروژه داده شده. حذف شود؟`)) return;
+    if (n && !confirm(t('cat.delValQ', { name: v.name, n }))) return;
     c.values = c.values.filter((x) => x !== v); saveCats(true);
-  } else if (b.dataset.c === 'delCat') {
-    if (!confirm(`دسته‌بندی «${c.name}» و همه‌ی مقادیرش حذف شود؟ (پروژه‌ها حذف نمی‌شوند)`)) return;
+  } else if (b.dataset.c === 'delCat' && c.id !== 'type') {
+    if (!confirm(t('cat.delCatQ', { name: c.name }))) return;
     cats.splice(ci, 1); delete filter.cats[c.id]; saveCats(true);
   }
 };
 $('#addCat').onclick = () => {
-  cats.push({ icon: '🏷️', name: 'دسته‌بندی جدید', values: [] });
+  cats.push({ icon: '🏷️', name: t('cat.newCat'), values: [] });
   saveCats(true, '.catBox:last-of-type [data-f=name]');
 };
 
@@ -341,18 +297,18 @@ function renderPicker() {
   pick.innerHTML = `<div class="epTabs">${EMOJI_GROUPS.map((g, i) => `<button type="button" data-g="${i}" class="${i === pickGroup ? 'on' : ''}" title="${g.name}">${g.tab}</button>`).join('')}</div>
     <div class="epName">${EMOJI_GROUPS[pickGroup].name}</div>
     <div class="epGrid">${EMOJI_GROUPS[pickGroup].list.map((x) => `<button type="button" data-e="${esc(x)}">${x}</button>`).join('')}</div>
-    <form class="epCustom"><input placeholder="یا ایموجی یا حرف دلخواه (Win + .)" maxlength="16"><button class="btn" type="submit">✓</button></form>`;
+    <form class="epCustom"><input placeholder="${t('emoji.custom')}" maxlength="16"><button class="btn" type="submit">✓</button></form>`;
 }
 function openPicker(btn) {
   pickFor = btn; renderPicker(); pick.hidden = false;
   const r = btn.getBoundingClientRect(), h = pick.offsetHeight, w = pick.offsetWidth;
   pick.style.top = `${Math.max(8, r.bottom + h + 8 > innerHeight ? r.top - h - 4 : r.bottom + 4)}px`;   // above when no room below
-  pick.style.left = `${Math.min(innerWidth - w - 8, Math.max(8, r.right - w))}px`;
+  pick.style.left = `${Math.min(innerWidth - w - 8, Math.max(8, LANG === 'en' ? r.left : r.right - w))}px`;
 }
 function applyIcon(icon) {
   icon = String(icon || '').trim(); if (!icon || !pickFor) return;
-  const t = catTarget(pickFor); if (!t) return;
-  t.obj[t.key] = icon; pickFor.textContent = icon; pick.hidden = true;
+  const tg = catTarget(pickFor); if (!tg) return;
+  tg.obj[tg.key] = icon; pickFor.textContent = icon; pick.hidden = true;
   saveCats(false);
 }
 pick.onclick = (e) => {
@@ -367,24 +323,23 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pick.hi
 $('#setDlg').addEventListener('close', () => { if (catTimer) saveCats(false); pick.hidden = true; });
 
 /* ---- settings dialog ---- */
-let settings = null;
-const fmtDate = (t) => (t ? new Date(t).toLocaleString('fa-IR') : '');
+const fmtDate = (ts) => (ts ? new Date(ts).toLocaleString(LANG === 'en' ? 'en-GB' : 'fa-IR') : '');
+$('#sFetchMin').innerHTML = [5, 15, 30].map((n) => `<option value="${n}">${t('set.min', { n })}</option>`).join('') +
+  [1, 3].map((n) => `<option value="${n * 60}">${t('set.hour', { n })}</option>`).join('');
 function showTab(tab) {
   document.querySelectorAll('#setTabs [data-tab]').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   document.querySelectorAll('#setDlg [data-pane]').forEach((p) => (p.hidden = p.dataset.pane !== tab));
+  $('.paneBody').scrollTop = 0;
 }
 function fillSettings(s) {
   settings = s;
   document.querySelectorAll('[data-set]').forEach((el) => (el.checked = !!s[el.dataset.set]));
+  $('#sLang').value = s.lang;
   $('#sFetchMin').value = String(s.fetchMinutes);
   $('#sFetchMin').disabled = !s.watchProjects || !s.fetchRemote;
   $('[data-set=fetchRemote]').disabled = !s.watchProjects;
   $('#uCur').textContent = s.version; $('#aVer').textContent = s.version;
   $('#ver').textContent = 'v' + s.version; $('#ver').hidden = false;
-  $('#rOn').checked = s.remote;
-  $('#rInfo').innerHTML = s.remote
-    ? `آدرس: ${s.ips.map((ip) => `<code>${ip}:${s.port}</code>`).join(' ')}<br>PIN: <code>${s.pin}</code>`
-    : 'غیرفعال است.';
   renderAppUpdate();
 }
 function renderAppUpdate() {
@@ -395,36 +350,36 @@ function renderAppUpdate() {
   const page = settings.updateMode === 'page';
   $('#settingsDot').hidden = !avail; $('#tabDot').hidden = !avail;
   let st;
-  if (u.downloading) st = `در حال دانلود نسخه‌ی ${esc(u.latest.version)} در پس‌زمینه… ${Math.round((u.progress || 0) * 100)}٪`;
-  else if (u.checking) st = 'در حال بررسی…';
+  if (u.downloading) st = t('up.downloading', { v: `<code>${esc(u.latest.version)}</code>`, p: Math.round((u.progress || 0) * 100) });
+  else if (u.checking) st = t('up.checking');
   else if (u.error) st = `<span class="bad">⚠ ${esc(u.error)}</span>`;
-  else if (ready) st = `<span class="ok">✓ نسخه‌ی <code>${esc(u.readyVersion)}</code> دانلود و بررسی شد و آماده‌ی نصب است.</span>`;
-  else if (avail) st = `<span class="warn">نسخه‌ی جدید <code>${esc(u.latest.version)}</code> موجود است</span> <small class="hint">(${fmtDate(u.latest.publishedAt)})</small>`;
-  else if (u.checkedAt) st = `<span class="ok">✓ آخرین نسخه را دارید.</span> <small class="hint">آخرین بررسی: ${ago(u.checkedAt)}</small>`;
-  else st = 'هنوز بررسی نشده.';
+  else if (ready) st = `<span class="ok">${t('up.ready', { v: `<code>${esc(u.readyVersion)}</code>` })}</span>`;
+  else if (avail) st = `<span class="warn">${t('up.available', { v: `<code>${esc(u.latest.version)}</code>` })}</span> <small class="hint">(${fmtDate(u.latest.publishedAt)})</small>`;
+  else if (u.checkedAt) st = `<span class="ok">${t('up.latest')}</span> <small class="hint">${t('up.lastCheck', { t: ago(u.checkedAt) })}</small>`;
+  else st = t('up.never');
   $('#uStatus').innerHTML = st;
   $('#uProgress').hidden = !u.downloading;
   $('#uProgress i').style.width = `${Math.round((u.progress || 0) * 100)}%`;
   $('#uInstall').hidden = !avail || u.downloading;
-  $('#uInstall').textContent = page ? '⬇ صفحه‌ی دانلود' : ready ? '🔄 نصب و راه‌اندازی مجدد' : '⬇ دانلود و نصب';
-  $('#uHow').hidden = !avail || page;
+  $('#uInstall').textContent = t(page ? 'up.page' : ready ? 'up.install' : 'up.download');
   $('#uCheck').disabled = u.checking || u.downloading;
   $('#uNotes').hidden = !avail || !u.latest.notes;
   if (avail) $('#uNotes').textContent = u.latest.notes;
   renderBanners();
 }
 function renderBanners() {
-  if (isRemote || !settings) return;
+  if (!settings) return;
   const u = settings.appUpdate || {};
+  const code = (v) => `<code>${esc(v)}</code>`;
   let h = '';
-  if (settings.justUpdated) h += `<div class="banner ok">✨ Ember به نسخه‌ی <code>${esc(settings.justUpdated)}</code> بروز شد — امتحانش کنید! <button class="btn ghost" data-banner="notes">تغییرات</button><button class="btn ghost" data-banner="dismiss">✕</button></div>`;
-  if (u.available && u.latest && u.ready) h += `<div class="banner">⬆️ نسخه‌ی <code>${esc(u.readyVersion)}</code> آماده‌ی نصب است. چند ثانیه طول می‌کشد؛ یا خودکار هنگام بستن Ember نصب می‌شود. <button class="btn primary" data-banner="restart">راه‌اندازی مجدد و بروزرسانی</button></div>`;
-  else if (u.available && u.latest && !u.downloading) h += `<div class="banner">⬆️ نسخه‌ی جدید Ember (<code>${esc(u.latest.version)}</code>) موجود است. <button class="btn primary" data-banner="update">مشاهده و نصب</button></div>`;
+  if (settings.justUpdated) h += `<div class="banner ok">${t('banner.updated', { v: code(settings.justUpdated) })} <button class="btn ghost" data-banner="notes">${t('banner.notes')}</button><button class="btn ghost" data-banner="dismiss">✕</button></div>`;
+  if (u.available && u.latest && u.ready) h += `<div class="banner">${t('banner.ready', { v: code(u.readyVersion) })} <button class="btn primary" data-banner="restart">${t('banner.restart')}</button></div>`;
+  else if (u.available && u.latest && !u.downloading) h += `<div class="banner">${t('banner.available', { v: code(u.latest.version) })} <button class="btn primary" data-banner="update">${t('banner.view')}</button></div>`;
   $('#banners').innerHTML = h;
 }
 async function restartForUpdate() {
   const run = items.filter((i) => i.status !== 'stopped').length;
-  if (run && !confirm(`${run} پروژه در حال اجراست و با راه‌اندازی مجدد متوقف می‌شود. ادامه؟`)) return;
+  if (run && !confirm(t('up.runningQ', { n: run }))) return;
   settings.appUpdate = await api.installAppUpdate(); renderAppUpdate();
 }
 $('#banners').onclick = (e) => {
@@ -442,32 +397,31 @@ async function openSettings(tab = 'general') {
 }
 const saveSettings = async (patch) => fillSettings(await api.setSettings(patch));
 $('#settingsBtn').onclick = () => openSettings(settings && settings.appUpdate && settings.appUpdate.available ? 'updates' : 'general');
-$('#remoteBtn').onclick = () => openSettings('remote');
 $('#setTabs').onclick = (e) => { const b = e.target.closest('[data-tab]'); if (!b) return; if (b.dataset.tab === 'cats') renderCats(); showTab(b.dataset.tab); };
 $('#setDlg').onchange = (e) => {
   const k = e.target.dataset.set;
   if (k) saveSettings({ [k]: e.target.checked });
   else if (e.target.id === 'sFetchMin') saveSettings({ fetchMinutes: Number(e.target.value) });
-  else if (e.target.id === 'rOn') saveSettings({ remote: e.target.checked });
+  else if (e.target.id === 'sLang') { store.set('ember.reopenSettings', true); api.setSettings({ lang: e.target.value }); }   // windows reload in the new language
 };
 $('#setClose').onclick = () => $('#setDlg').close();
 $('#sData').onclick = () => api.openData();
 $('#sCheckProjects').onclick = async (e) => {
-  e.target.disabled = true; $('#sProjMsg').textContent = 'در حال بررسی…';
+  e.target.disabled = true; $('#sProjMsg').textContent = t('set.checking');
   items = await api.checkProjects(true); render();
   const n = items.filter((i) => i.updated || i.behind > 0).length;
-  $('#sProjMsg').textContent = n ? `${n} پروژه بروز شده` : 'همه‌چیز همان است که بود.';
+  $('#sProjMsg').textContent = n ? t('set.nUpdated', { n }) : t('set.noneUpdated');
   e.target.disabled = false;
 };
 $('#uCheck').onclick = async () => { settings.appUpdate = await api.checkAppUpdate(); renderAppUpdate(); };
 $('#uInstall').onclick = () => restartForUpdate();
 $('#uPage').onclick = () => api.openUrl(`${settings.repo}/releases`);
-$('#rPin').onclick = () => saveSettings({ regenPin: true });
-$('#rApk').onclick = () => api.openUrl(`${settings.repo}/releases/latest/download/Ember-Remote.apk`);
 document.querySelectorAll('[data-link]').forEach((b) => (b.onclick = () => api.openUrl(settings.repo + b.dataset.link)));
 document.querySelectorAll('[data-link-abs]').forEach((b) => (b.onclick = (e) => { e.preventDefault(); api.openUrl(b.dataset.linkAbs); }));
 
 reload();
-if (isRemote) setInterval(reload, 15000);
-if (isRemote) api.settings().then((s) => { $('#ver').textContent = 'v' + s.version; $('#ver').hidden = false; }).catch(() => {});
-else api.settings().then(fillSettings);
+api.settings().then((s) => {
+  fillSettings(s);
+  // after switching the language, come back to the settings page you were on
+  if (store.get('ember.reopenSettings', false)) { store.set('ember.reopenSettings', false); openSettings('general'); }
+});

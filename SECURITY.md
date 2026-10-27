@@ -12,6 +12,5 @@ instead. You will get an answer within a few days.
 
 Areas that deserve particular care:
 
-- the phone remote (LAN HTTP server with a PIN, `main.js` → `handle`)
 - the self-update download (`main.js` → `installAppUpdate`, `updates.js`)
 - running project scripts and `git` commands (`main.js` → `exec`, `projectwatch.js`)

@@ -7,13 +7,6 @@ updates:
     groups:
       npm-packages:
         patterns: ["*"]
-  - package-ecosystem: npm
-    directory: "/mobile"
-    schedule:
-      interval: monthly
-    groups:
-      mobile-packages:
-        patterns: ["*"]
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

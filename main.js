@@ -1,29 +1,25 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu, Notification, Tray, net, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const http = require('http');
-const os = require('os');
 const crypto = require('crypto');
 const { spawn, execFile } = require('child_process');
 const updates = require('./updates');
 const watch = require('./projectwatch');
 const ports = require('./ports');
+const I18N = require('./src/i18n');
+const T = (k, v) => I18N.make(db && db.settings.lang)(k, v);
 
 const SRC = path.join(__dirname, 'src');
 const RUNNABLE = ['dev', 'start', 'serve', 'develop', 'preview', 'watch'];
 const ANSI = /\x1B\[[0-9;?]*[A-Za-z]/g;
 const URL_RE = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]|(?:\d{1,3}\.){3}\d{1,3}):(\d+)/i;
-const MIME = {
-  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png',
-  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.ico': 'image/x-icon',
-};
 const { pathToFileURL } = require('url');
 
-let win, tray = null, dbFile, db, remote = null, quitting = false;
+let win, tray = null, dbFile, db, quitting = false;
+const projWins = new Map(); // id -> BrowserWindow of that project
 const procs = new Map();   // id -> { child, status, url, stopping }
 const revs = new Map();    // id -> { kind, rev, time, subject, behind, upstream, remoteRev, remoteSubject, fetchError }
 const logs = new Map();    // id -> string[]
-const sse = new Set();
 
 /* ---------- storage ---------- */
 function load() {
@@ -31,30 +27,33 @@ function load() {
   try { db = JSON.parse(fs.readFileSync(dbFile, 'utf8')); } catch { db = {}; }
   db.projects ??= [];
   db.settings ??= {};
-  db.settings.port ??= 7777;
-  db.settings.remote ??= false;
-  db.settings.pin ??= String(crypto.randomInt(100000, 999999));
-  db.settings.checkUpdates ??= true;   // look for a new Ember release on GitHub
+  db.settings.lang ??= 'fa';
+  // the phone remote and the update switches are gone: updates are always checked, downloaded and installed on exit
+  for (const k of ['port', 'remote', 'pin', 'checkUpdates', 'autoDownload', 'installOnQuit']) delete db.settings[k];
   db.settings.watchProjects ??= true;  // "updated — test it" badge on projects
   db.settings.fetchRemote ??= true;    // git fetch to see commits that are not pulled yet
   db.settings.fetchMinutes ??= 15;
   db.settings.notify ??= true;         // Windows notifications
   db.settings.tray ??= false;          // closing the window keeps Ember in the tray
   db.settings.autostart ??= false;
-  db.settings.autoDownload ??= true;   // download new versions in the background
-  db.settings.installOnQuit ??= true;  // install a downloaded version when Ember closes
   migrateCategories();
 }
 
 /* ---------- categories (user-defined groups, each with icon + name values) ---------- */
-const DEFAULT_TYPES = [
-  ['web', '🌐', 'وب‌سایت'], ['game', '🎮', 'بازی'], ['mobile', '📱', 'موبایل'],
-  ['desktop', '🖥️', 'دسکتاپ'], ['api', '⚙️', 'بک‌اند / API'], ['other', '📦', 'سایر'],
-];
+const DEFAULT_TYPES = [['web', '🌐'], ['game', '🎮'], ['mobile', '📱'], ['desktop', '🖥️'], ['api', '⚙️'], ['other', '📦']];
+const defaultTypeCategory = () => ({ id: 'type', name: T('def.type'), icon: '🗂️', values: DEFAULT_TYPES.map(([id, icon]) => ({ id, icon, name: T('def.' + id) })) });
+// after a language change: rename the default category and its values, unless the user renamed them
+function translateDefaults(from, to) {
+  const tf = I18N.make(from), tt = I18N.make(to);
+  const c = db.categories.find((x) => x.id === 'type');
+  if (!c) return;
+  if (c.name === tf('def.type')) c.name = tt('def.type');
+  for (const v of c.values) if (DEFAULT_TYPES.some(([id]) => id === v.id) && v.name === tf('def.' + v.id)) v.name = tt('def.' + v.id);
+}
 const newId = () => crypto.randomUUID().slice(0, 8);
 function migrateCategories() {
   if (!db.categories) {
-    db.categories = [{ id: 'type', name: 'نوع پروژه', icon: '🗂️', values: DEFAULT_TYPES.map(([id, icon, name]) => ({ id, icon, name })) }];
+    db.categories = [defaultTypeCategory()];
     // projects from older versions had a fixed "client" field: keep it as a category of its own
     const clients = [...new Set(db.projects.map((p) => p.client).filter(Boolean))];
     if (clients.length) db.categories.push({ id: 'client', name: 'کارفرما', icon: '🏢', values: clients.map((c) => ({ id: newId(), icon: '🏢', name: c })) });
@@ -66,15 +65,19 @@ function migrateCategories() {
     }
     save();
   }
+  if (!db.categories.some((c) => c.id === 'type')) { db.categories.unshift(defaultTypeCategory()); save(); }
   for (const p of db.projects) p.cats ??= {};
 }
 const str = (v, max) => String(v ?? '').trim().slice(0, max);
 function setCategories(list) {
   if (!Array.isArray(list)) return;
+  const type = db.categories.find((c) => c.id === 'type');
   db.categories = list.map((c) => ({
-    id: str(c.id, 40) || newId(), name: str(c.name, 40) || 'دسته‌بندی', icon: str(c.icon, 16) || '🗂️',
-    values: (Array.isArray(c.values) ? c.values : []).map((v) => ({ id: str(v.id, 40) || newId(), icon: str(v.icon, 16) || '•', name: str(v.name, 40) || 'بدون نام' })),
+    id: str(c.id, 40) || newId(), name: str(c.name, 40) || T('def.category'), icon: str(c.icon, 16) || '🗂️',
+    values: (Array.isArray(c.values) ? c.values : []).map((v) => ({ id: str(v.id, 40) || newId(), icon: str(v.icon, 16) || '•', name: str(v.name, 40) || T('def.unnamed') })),
   }));
+  // "Project type" is the default category and cannot be deleted
+  if (!db.categories.some((c) => c.id === 'type')) db.categories.unshift(type || defaultTypeCategory());
   // drop assignments that point to deleted categories or values
   for (const p of db.projects) {
     const cats = {};
@@ -120,16 +123,16 @@ function logoInfo(p) {
 function dropCustomLogo(p) {
   if (p.logo) { try { fs.unlinkSync(path.join(logosDir(), path.basename(p.logo))); } catch {} }
 }
-async function pickLogo(id) {
+async function pickLogo(id, sender) {
   const p = db.projects.find((x) => x.id === id);
   if (!p) return snapshot();
-  const r = await dialog.showOpenDialog(win, {
-    title: 'Project logo', properties: ['openFile'], defaultPath: p.path,
-    filters: [{ name: 'Images', extensions: LOGO_EXT.map((e) => e.slice(1)) }],
+  const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(sender) || win, {
+    title: T('dlg.logo'), properties: ['openFile'], defaultPath: p.path,
+    filters: [{ name: T('dlg.images'), extensions: LOGO_EXT.map((e) => e.slice(1)) }],
   });
   if (r.canceled || !r.filePaths[0]) return snapshot();
   const src = r.filePaths[0], ext = path.extname(src).toLowerCase();
-  if (!LOGO_EXT.includes(ext) || fs.statSync(src).size > 5e6) { dialog.showErrorBox('Ember', 'تصویر باید png، svg، jpg، webp، gif یا ico و کمتر از ۵ مگابایت باشد.'); return snapshot(); }
+  if (!LOGO_EXT.includes(ext) || fs.statSync(src).size > 5e6) { dialog.showErrorBox('Ember', T('dlg.badImage')); return snapshot(); }
   fs.mkdirSync(logosDir(), { recursive: true });
   dropCustomLogo(p);
   p.logo = `${p.id}-${Date.now()}${ext}`;           // new name each time, so the picture refreshes
@@ -209,9 +212,7 @@ function snapshot() {
 
 /* ---------- events ---------- */
 function broadcast(evt) {
-  if (win && !win.isDestroyed()) win.webContents.send('evt', evt);
-  const data = 'data: ' + JSON.stringify(evt) + '\n\n';
-  sse.forEach((r) => r.write(data));
+  for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('evt', evt);
 }
 function addLog(id, text) {
   const a = logs.get(id) || [];
@@ -280,13 +281,13 @@ function start(id, script) {
     // every project gets its own port; a busy one moves to the next free port
     const pkg = readPkg(p.path);
     const tool = ports.detectTool(pkg && pkg.scripts ? pkg.scripts[p.script] : '');
-    const taken = new Set([db.settings.port]);
+    const taken = new Set();
     for (const o of db.projects) if (o.id !== p.id && o.port) taken.add(o.port);
     for (const o of procs.values()) if (o !== st && o.port) taken.add(o.port);
     const wanted = p.port || tool.defaultPort;
     const port = await ports.findFreePort(wanted, taken);
     if (st.stopping) return finish();
-    if (p.port && port !== p.port) addLog(id, `⚠ Port ${p.port} is busy, using ${port}.\n`);
+    if (p.port && port !== p.port) addLog(id, T('log.portBusy', { a: p.port, b: port }) + '\n');
     if (port !== p.port) { p.port = port; save(); }
     st.port = port;
     st.status = 'running'; pushState(id);
@@ -297,7 +298,7 @@ function start(id, script) {
     exec(p, st, `${pm} install`, (code) => {
       if (st.stopping) return finish();
       if (code === 0) return runIt();
-      addLog(id, '\n✖ Install failed.\n');
+      addLog(id, '\n' + T('log.installFailed') + '\n');
       finish();
     });
   } else runIt();
@@ -314,66 +315,8 @@ function stop(id) {
   if (st.child) killTree(st.child.pid);
 }
 
-/* ---------- LAN remote (for the phone app) ---------- */
-function lanIPs() {
-  return Object.values(os.networkInterfaces()).flat()
-    .filter((i) => i && i.family === 'IPv4' && !i.internal).map((i) => i.address);
-}
-const readBody = (req) => new Promise((ok) => {
-  let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => { try { ok(JSON.parse(b || '{}')); } catch { ok({}); } });
-});
-const json = (res, data, code = 200) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
-
-async function handle(req, res) {
-  const u = new URL(req.url, 'http://x');
-  if (u.pathname.startsWith('/api/')) {
-    const pin = req.headers['x-pin'] || u.searchParams.get('pin');
-    if (pin !== db.settings.pin) return json(res, { error: 'pin' }, 401);
-    if (u.pathname === '/api/projects') return json(res, snapshot());
-    if (u.pathname === '/api/categories') return json(res, db.categories);
-    if (u.pathname === '/api/info') return json(res, { version: app.getVersion() });
-    if (u.pathname === '/api/logo') {
-      const p = db.projects.find((x) => x.id === u.searchParams.get('id'));
-      const f = p && logoFile(p);
-      if (!f) return json(res, { error: 'not found' }, 404);
-      res.writeHead(200, { 'Content-Type': MIME[path.extname(f).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'max-age=86400' });
-      return fs.createReadStream(f).pipe(res);
-    }
-    if (u.pathname === '/api/logs') return json(res, logs.get(u.searchParams.get('id')) || []);
-    if (u.pathname === '/api/events') {
-      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
-      res.write('\n'); sse.add(res); req.on('close', () => sse.delete(res));
-      return;
-    }
-    if (req.method === 'POST') {
-      const b = await readBody(req);
-      if (u.pathname === '/api/start') start(b.id, b.script);
-      else if (u.pathname === '/api/stop') stop(b.id);
-      return json(res, { ok: true });
-    }
-    return json(res, { error: 'not found' }, 404);
-  }
-  const f = u.pathname === '/' ? 'index.html' : u.pathname.slice(1);
-  const fp = path.join(SRC, f);
-  if (!fp.startsWith(SRC)) { res.writeHead(403); return res.end(); }
-  fs.readFile(fp, (err, buf) => {
-    if (err) { res.writeHead(404); return res.end('not found'); }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(fp)] || 'application/octet-stream' });
-    res.end(buf);
-  });
-}
-function applyRemote() {
-  if (db.settings.remote && !remote) {
-    remote = http.createServer(handle);
-    remote.on('error', (e) => console.error('remote:', e.message));
-    remote.listen(db.settings.port, '0.0.0.0');
-  } else if (!db.settings.remote && remote) {
-    remote.close(); remote = null;
-    sse.forEach((r) => r.end()); sse.clear();
-  }
-}
 const settingsOut = () => ({
-  ...db.settings, ips: lanIPs(), version: app.getVersion(), repo: updates.REPO_URL,
+  ...db.settings, version: app.getVersion(), repo: updates.REPO_URL,
   portable: !!process.env.PORTABLE_EXECUTABLE_FILE, updateMode: updateMode(), appUpdate, justUpdated,
 });
 
@@ -386,7 +329,10 @@ function showWindow() {
 function notify(title, body, evt) {
   if (!db.settings.notify || !Notification.isSupported()) return;
   const n = new Notification({ title, body, icon: path.join(__dirname, 'build', 'icon.png') });
-  n.on('click', () => { showWindow(); if (evt) broadcast(evt); });
+  n.on('click', () => {
+    if (evt && evt.type === 'focus') return openProject(evt.id);   // a project notification opens that project
+    showWindow(); if (evt) broadcast(evt);
+  });
   n.show();
 }
 function applyTray() {
@@ -394,10 +340,10 @@ function applyTray() {
     tray = new Tray(path.join(__dirname, 'build', 'icon.png'));
     tray.setToolTip('Ember');
     tray.setContextMenu(Menu.buildFromTemplate([
-      { label: 'باز کردن Ember', click: showWindow },
-      { label: 'بررسی بروزرسانی پروژه‌ها', click: () => checkProjects(true) },
+      { label: T('tray.open'), click: showWindow },
+      { label: T('tray.check'), click: () => checkProjects(true) },
       { type: 'separator' },
-      { label: 'خروج', click: () => { quitting = true; app.quit(); } },
+      { label: T('tray.quit'), click: () => { quitting = true; app.quit(); } },
     ]));
     tray.on('click', showWindow);
   } else if (!db.settings.tray && tray) {
@@ -445,11 +391,11 @@ async function checkProjects(withRemote = false) {
       if (r.rev && !p.seenRev) { p.seenRev = r.rev; dirty = true; }   // first look: nothing to test yet
       if (r.rev && r.rev !== p.seenRev && p.notifiedRev !== r.rev) {
         p.notifiedRev = r.rev; dirty = true;
-        notify(`🆕 ${p.name} بروز شد`, (r.subject ? r.subject + '\n' : '') + 'تغییرات جدید را اجرا و تست کنید.', { type: 'focus', id: p.id });
+        notify(T('n.updated', { name: p.name }), (r.subject ? r.subject + '\n' : '') + T('n.updatedBody'), { type: 'focus', id: p.id });
       }
       if (r.behind > 0 && r.remoteRev && p.notifiedRemote !== r.remoteRev) {
         p.notifiedRemote = r.remoteRev; dirty = true;
-        notify(`⬇ ${p.name}: ${r.behind} کامیت جدید`, (r.remoteSubject ? r.remoteSubject + '\n' : '') + 'دریافت (pull) کنید و تست کنید.', { type: 'focus', id: p.id });
+        notify(T('n.behind', { name: p.name, n: r.behind }), (r.remoteSubject ? r.remoteSubject + '\n' : '') + T('n.behindBody'), { type: 'focus', id: p.id });
       }
       if (prev.rev !== r.rev || prev.behind !== r.behind || prev.fetchError !== r.fetchError) pushState(p.id);
     }
@@ -463,7 +409,7 @@ async function pullProject(id) {
   if (!p) return { ok: false, err: 'not found' };
   addLog(id, `$ git pull --ff-only\n`);
   const r = await watch.pull(p.path);
-  addLog(id, (r.out || r.err || '') + '\n' + (r.ok ? '✔ Pulled.\n' : '✖ Pull failed.\n'));
+  addLog(id, (r.out || r.err || '') + '\n' + T(r.ok ? 'log.pulled' : 'log.pullFailed') + '\n');
   lastFetch = 0;
   await checkProjects(true);
   return { ok: r.ok, err: r.ok ? null : r.err };
@@ -480,11 +426,7 @@ async function checkAppUpdate(manual = false) {
   try {
     const r = await updates.fetchLatest(net.fetch, app.getVersion());
     setAppUpdate({ checking: false, checkedAt: Date.now(), latest: r.latest, available: r.available, mode: updateMode() });
-    if (r.available && db.settings.autoDownload && updateMode() !== 'page') { downloadAppUpdate(); return appUpdate; }
-    if (r.available && !manual && db.settings.notifiedVersion !== r.latest.version) {
-      db.settings.notifiedVersion = r.latest.version; save();
-      notify(`نسخه‌ی جدید Ember: ${r.latest.version}`, 'برای دانلود و نصب، تنظیمات ← بروزرسانی را باز کنید.', { type: 'openSettings', tab: 'updates' });
-    }
+    if (r.available && updateMode() !== 'page') downloadAppUpdate();   // always: download in the background
   } catch (e) {
     setAppUpdate({ checking: false, checkedAt: Date.now(), error: e.message || String(e) });
   }
@@ -537,9 +479,12 @@ async function downloadAppUpdate() {
     }
     fs.renameSync(part, file);
     setAppUpdate({ downloading: false, progress: 1, ready: true, readyVersion: l.version, readyFile: file });
-    notify(`Ember ${l.version} آماده‌ی نصب است`, 'با «راه‌اندازی مجدد» در چند ثانیه نصب می‌شود؛ یا هنگام بستن Ember.', { type: 'openSettings', tab: 'updates' });
+    if (db.settings.notifiedVersion !== l.version) {
+      db.settings.notifiedVersion = l.version; save();
+      notify(T('n.ready', { v: l.version }), T('n.readyBody'), { type: 'openSettings', tab: 'updates' });
+    }
   } catch (e) {
-    setAppUpdate({ downloading: false, error: 'دانلود ناموفق بود: ' + (e.message || e) });
+    setAppUpdate({ downloading: false, error: T('up.dlFailed', { e: e.message || e }) });
   }
   return appUpdate;
 }
@@ -565,7 +510,7 @@ function runUpdate(restart) {
     return true;
   } catch (e) {
     applyingUpdate = false;
-    setAppUpdate({ error: 'نصب ناموفق بود: ' + (e.message || e) });
+    setAppUpdate({ error: T('up.installFailed', { e: e.message || e }) });
     return false;
   }
 }
@@ -595,8 +540,8 @@ function cleanUpdates() {
 function scheduleChecks() {
   setTimeout(() => checkProjects(true), 3000);
   setInterval(() => checkProjects(false), 60000);           // local check every minute, fetch every N minutes
-  setTimeout(() => db.settings.checkUpdates && checkAppUpdate(), 8000);
-  setInterval(() => db.settings.checkUpdates && checkAppUpdate(), 6 * 3600000);
+  setTimeout(() => checkAppUpdate(), 8000);
+  setInterval(() => checkAppUpdate(), 6 * 3600000);
 }
 function noteVersion() {
   const v = app.getVersion();
@@ -607,7 +552,7 @@ function noteVersion() {
 /* ---------- IPC ---------- */
 ipcMain.handle('list', () => snapshot());
 ipcMain.handle('add', async () => {
-  const r = await dialog.showOpenDialog(win, { title: 'Select project folder', properties: ['openDirectory'] });
+  const r = await dialog.showOpenDialog(win, { title: T('dlg.addFolder'), properties: ['openDirectory'] });
   if (r.canceled) return snapshot();
   for (const dir of scan(r.filePaths[0])) {
     if (db.projects.some((p) => p.path.toLowerCase() === dir.toLowerCase())) continue;
@@ -635,16 +580,28 @@ ipcMain.handle('update', (_, id, patch) => {
       for (const c of db.categories) if (c.values.some((v) => v.id === patch.cats[c.id])) p.cats[c.id] = patch.cats[c.id];
     }
     save();
+    broadcast({ type: 'projects' });
   }
   return snapshot();
 });
-ipcMain.handle('pickLogo', (_, id) => pickLogo(id));
+ipcMain.handle('pickLogo', async (e, id) => { const r = await pickLogo(id, e.sender); broadcast({ type: 'projects' }); return r; });
 ipcMain.handle('setLogoMode', (_, id, mode) => {
   const p = db.projects.find((x) => x.id === id);
-  if (p && (mode === 'auto' || mode === 'none')) { dropCustomLogo(p); if (mode === 'auto') delete p.logo; else p.logo = ''; save(); }
+  if (p && (mode === 'auto' || mode === 'none')) { dropCustomLogo(p); if (mode === 'auto') delete p.logo; else p.logo = ''; save(); broadcast({ type: 'projects' }); }
   return snapshot();
 });
-ipcMain.handle('remove', (_, id) => { const rp = db.projects.find((x) => x.id === id); if (rp) dropCustomLogo(rp); stop(id); revs.delete(id); db.projects = db.projects.filter((p) => p.id !== id); save(); return snapshot(); });
+ipcMain.handle('remove', (_, id) => {
+  const rp = db.projects.find((x) => x.id === id);
+  if (rp) dropCustomLogo(rp);
+  stop(id); revs.delete(id);
+  db.projects = db.projects.filter((p) => p.id !== id); save();
+  const pw = projWins.get(id); if (pw && !pw.isDestroyed()) pw.close();
+  return snapshot();
+});
+ipcMain.handle('openProject', (_, id) => openProject(id));
+ipcMain.handle('editProject', (_, id) => { showWindow(); broadcast({ type: 'edit', id }); });
+ipcMain.handle('clearLog', (_, id) => { logs.set(id, []); broadcast({ type: 'logClear', id }); });
+ipcMain.on('lang', (e) => { e.returnValue = db ? db.settings.lang : 'fa'; });
 ipcMain.handle('start', (_, id, script) => start(id, script));
 ipcMain.handle('stop', (_, id) => stop(id));
 ipcMain.handle('logs', (_, id) => logs.get(id) || []);
@@ -655,18 +612,23 @@ ipcMain.handle('openData', () => shell.openPath(app.getPath('userData')));
 ipcMain.handle('openFolder', (_, id) => { const p = db.projects.find((x) => x.id === id); if (p) shell.openPath(p.path); });
 ipcMain.handle('settings', () => settingsOut());
 ipcMain.handle('setSettings', (_, s) => {
-  for (const k of ['remote', 'checkUpdates', 'watchProjects', 'fetchRemote', 'notify', 'tray', 'autostart', 'autoDownload', 'installOnQuit']) {
+  for (const k of ['watchProjects', 'fetchRemote', 'notify', 'tray', 'autostart']) {
     if (typeof s[k] === 'boolean') db.settings[k] = s[k];
   }
   if (Number.isFinite(s.fetchMinutes)) db.settings.fetchMinutes = Math.min(240, Math.max(5, Math.round(s.fetchMinutes)));
-  if (s.regenPin) db.settings.pin = String(crypto.randomInt(100000, 999999));
-  save(); applyRemote(); applyTray(); applyAutostart();
+  if ((s.lang === 'fa' || s.lang === 'en') && s.lang !== db.settings.lang) {
+    translateDefaults(db.settings.lang, s.lang);
+    db.settings.lang = s.lang;
+    if (tray) { tray.destroy(); tray = null; }       // rebuilt with the new texts below
+    setImmediate(() => broadcast({ type: 'lang', lang: s.lang }));
+  }
+  save(); applyTray(); applyAutostart();
   if (s.watchProjects || s.fetchRemote) checkProjects(true);
   if (s.watchProjects === false || s.fetchRemote === false) db.projects.forEach((p) => pushState(p.id));
   return settingsOut();
 });
 ipcMain.handle('checkProjects', (_, withRemote) => checkProjects(!!withRemote).then(snapshot));
-ipcMain.handle('markTested', (_, id) => { const p = db.projects.find((x) => x.id === id); if (p) markTested(p); return snapshot(); });
+ipcMain.handle('markTested', (_, id) => { const p = db.projects.find((x) => x.id === id); if (p) { markTested(p); pushState(id); } return snapshot(); });
 ipcMain.handle('pull', (_, id) => pullProject(id));
 ipcMain.handle('checkAppUpdate', () => checkAppUpdate(true));
 ipcMain.handle('installAppUpdate', () => installAppUpdate());
@@ -675,26 +637,40 @@ ipcMain.handle('dismissJustUpdated', () => { justUpdated = null; });
 
 /* ---------- window ---------- */
 function createWindow() {
-  win = new BrowserWindow({
-    width: 1280, height: 800, minWidth: 900, minHeight: 600, title: 'Ember', backgroundColor: '#110D0A',
-    // the top bar of the page is the title bar, in the app's colours (like SnapshotAll / DeskPresence)
-    ...(process.platform === 'win32' ? { titleBarStyle: 'hidden', titleBarOverlay: { color: '#16110D', symbolColor: '#F5EEE8', height: 56 } } : {}),
-    icon: path.join(__dirname, 'build', 'icon.png'),
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
-  });
+  win = new BrowserWindow(windowOptions({ width: 1280, height: 800, minWidth: 900, minHeight: 600, title: 'Ember' }));
   Menu.setApplicationMenu(null);
   win.loadFile(path.join(SRC, 'index.html'));
   win.on('close', (e) => { if (tray && !quitting) { e.preventDefault(); win.hide(); } });
   win.on('focus', () => checkProjects(false));
+  // without the tray, closing the main window closes Ember, project windows included
+  win.on('closed', () => { if (!tray) projWins.forEach((w) => !w.isDestroyed() && w.close()); });
+}
+const windowOptions = (extra) => ({
+  backgroundColor: '#110D0A', icon: path.join(__dirname, 'build', 'icon.png'),
+  // the top bar of the page is the title bar, in the app's colours (like SnapshotAll / DeskPresence)
+  ...(process.platform === 'win32' ? { titleBarStyle: 'hidden', titleBarOverlay: { color: '#16110D', symbolColor: '#F5EEE8', height: 56 } } : {}),
+  webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
+  ...extra,
+});
+// one window per project: name and buttons on top, its log below
+function openProject(id) {
+  const p = db.projects.find((x) => x.id === id);
+  if (!p) return;
+  let w = projWins.get(id);
+  if (w && !w.isDestroyed()) { if (w.isMinimized()) w.restore(); w.show(); w.focus(); return; }
+  w = new BrowserWindow(windowOptions({ width: 1000, height: 700, minWidth: 640, minHeight: 420, title: p.name }));
+  w.loadFile(path.join(SRC, 'project.html'), { query: { id } });
+  w.on('closed', () => projWins.delete(id));
+  projWins.set(id, w);
 }
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 app.on('second-instance', () => showWindow());
 app.setAppUserModelId('app.ember.launcher');   // Windows notifications need it
-app.whenReady().then(() => { if (!gotLock) return; nativeTheme.themeSource = 'dark'; load(); noteVersion(); cleanUpdates(); createWindow(); applyRemote(); applyTray(); applyAutostart(); scheduleChecks(); });
+app.whenReady().then(() => { if (!gotLock) return; nativeTheme.themeSource = 'dark'; load(); noteVersion(); cleanUpdates(); createWindow(); applyTray(); applyAutostart(); scheduleChecks(); });
 app.on('before-quit', () => {
   quitting = true;
   procs.forEach((st) => st.child && killTree(st.child.pid));
-  if (appUpdate.ready && db && db.settings.installOnQuit) runUpdate(false);   // a downloaded update installs quietly on exit
+  if (appUpdate.ready) runUpdate(false);   // a downloaded update installs quietly on exit
 });
 app.on('window-all-closed', () => { if (!tray) app.quit(); });

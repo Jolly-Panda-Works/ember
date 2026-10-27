@@ -33,7 +33,6 @@ function pickRelease(json) {
     publishedAt: json.published_at || null,
     setupUrl: find(/setup.*\.exe$/i),
     portableUrl: find(/portable.*\.exe$/i),
-    apkUrl: find(/\.apk$/i),
     sumsUrl: find(/^SHA256SUMS\.txt$/i),
   };
 }

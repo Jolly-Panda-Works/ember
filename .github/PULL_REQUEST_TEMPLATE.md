@@ -6,5 +6,5 @@
 
 - [ ] `npm test` and `npm run check` pass
 - [ ] Tested with `npm start` on Windows
-- [ ] New UI text is Persian and fits the right-to-left layout
+- [ ] New UI text is in `src/i18n.js` in Persian and English
 - [ ] README / CHANGELOG updated if needed
