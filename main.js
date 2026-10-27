@@ -12,7 +12,11 @@ const SRC = path.join(__dirname, 'src');
 const RUNNABLE = ['dev', 'start', 'serve', 'develop', 'preview', 'watch'];
 const ANSI = /\x1B\[[0-9;?]*[A-Za-z]/g;
 const URL_RE = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]|(?:\d{1,3}\.){3}\d{1,3}):(\d+)/i;
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' };
+const MIME = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.ico': 'image/x-icon',
+};
+const { pathToFileURL } = require('url');
 
 let win, tray = null, dbFile, db, remote = null, quitting = false;
 const procs = new Map();   // id -> { child, status, url, stopping }
@@ -84,6 +88,53 @@ function defaultCats(pkg) {
 }
 const save = () => fs.writeFileSync(dbFile, JSON.stringify(db, null, 2));
 
+/* ---------- project logos ---------- */
+// p.logo: undefined = find the project's own favicon/logo, '' = no logo, 'file.ext' = a picture the user chose
+const LOGO_EXT = ['.png', '.svg', '.jpg', '.jpeg', '.webp', '.gif', '.ico'];
+const AUTO_LOGOS = [
+  'public/logo.svg', 'public/logo.png', 'public/icon.svg', 'public/icon.png', 'public/favicon.svg', 'public/favicon.png',
+  'public/apple-touch-icon.png', 'static/favicon.svg', 'static/favicon.png', 'src/assets/logo.svg', 'src/assets/logo.png',
+  'src/app/icon.png', 'src/app/icon.svg', 'app/icon.png', 'assets/logo.png', 'assets/icon.png', 'build/icon.png',
+  'resources/icon.png', 'logo.svg', 'logo.png', 'icon.png', 'public/favicon.ico', 'src/app/favicon.ico', 'app/favicon.ico',
+  'src/favicon.ico', 'favicon.ico',
+];
+const logosDir = () => path.join(app.getPath('userData'), 'logos');
+function logoFile(p) {
+  if (p.logo === '') return null;
+  if (p.logo) { const f = path.join(logosDir(), path.basename(p.logo)); return fs.existsSync(f) ? f : null; }
+  for (const rel of AUTO_LOGOS) {
+    const f = path.join(p.path, rel);
+    try { if (fs.statSync(f).size < 2e6) return f; } catch {}
+  }
+  return null;
+}
+function logoInfo(p) {
+  const f = logoFile(p);
+  if (!f) return { logoUrl: null, logoMode: p.logo === '' ? 'none' : p.logo ? 'custom' : 'auto' };
+  let v = 0; try { v = Math.floor(fs.statSync(f).mtimeMs); } catch {}
+  return { logoUrl: pathToFileURL(f).href + '?v=' + v, logoV: v, logoMode: p.logo ? 'custom' : 'auto' };
+}
+function dropCustomLogo(p) {
+  if (p.logo) { try { fs.unlinkSync(path.join(logosDir(), path.basename(p.logo))); } catch {} }
+}
+async function pickLogo(id) {
+  const p = db.projects.find((x) => x.id === id);
+  if (!p) return snapshot();
+  const r = await dialog.showOpenDialog(win, {
+    title: 'Project logo', properties: ['openFile'], defaultPath: p.path,
+    filters: [{ name: 'Images', extensions: LOGO_EXT.map((e) => e.slice(1)) }],
+  });
+  if (r.canceled || !r.filePaths[0]) return snapshot();
+  const src = r.filePaths[0], ext = path.extname(src).toLowerCase();
+  if (!LOGO_EXT.includes(ext) || fs.statSync(src).size > 5e6) { dialog.showErrorBox('Ember', 'تصویر باید png، svg، jpg، webp، gif یا ico و کمتر از ۵ مگابایت باشد.'); return snapshot(); }
+  fs.mkdirSync(logosDir(), { recursive: true });
+  dropCustomLogo(p);
+  p.logo = `${p.id}-${Date.now()}${ext}`;           // new name each time, so the picture refreshes
+  fs.copyFileSync(src, path.join(logosDir(), p.logo));
+  save();
+  return snapshot();
+}
+
 /* ---------- project inspection ---------- */
 function readPkg(dir) {
   try { return JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')); } catch { return null; }
@@ -148,6 +199,7 @@ function snapshot() {
       status: st ? st.status : 'stopped', url: st ? st.url : null,
       needsInstall: st ? false : needsInstall(p.path),
       ...projectUpdate(p),
+      ...logoInfo(p),
     };
   });
 }
@@ -257,6 +309,14 @@ async function handle(req, res) {
     if (pin !== db.settings.pin) return json(res, { error: 'pin' }, 401);
     if (u.pathname === '/api/projects') return json(res, snapshot());
     if (u.pathname === '/api/categories') return json(res, db.categories);
+    if (u.pathname === '/api/info') return json(res, { version: app.getVersion() });
+    if (u.pathname === '/api/logo') {
+      const p = db.projects.find((x) => x.id === u.searchParams.get('id'));
+      const f = p && logoFile(p);
+      if (!f) return json(res, { error: 'not found' }, 404);
+      res.writeHead(200, { 'Content-Type': MIME[path.extname(f).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'max-age=86400' });
+      return fs.createReadStream(f).pipe(res);
+    }
     if (u.pathname === '/api/logs') return json(res, logs.get(u.searchParams.get('id')) || []);
     if (u.pathname === '/api/events') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
@@ -483,7 +543,13 @@ ipcMain.handle('update', (_, id, patch) => {
   }
   return snapshot();
 });
-ipcMain.handle('remove', (_, id) => { stop(id); revs.delete(id); db.projects = db.projects.filter((p) => p.id !== id); save(); return snapshot(); });
+ipcMain.handle('pickLogo', (_, id) => pickLogo(id));
+ipcMain.handle('setLogoMode', (_, id, mode) => {
+  const p = db.projects.find((x) => x.id === id);
+  if (p && (mode === 'auto' || mode === 'none')) { dropCustomLogo(p); if (mode === 'auto') delete p.logo; else p.logo = ''; save(); }
+  return snapshot();
+});
+ipcMain.handle('remove', (_, id) => { const rp = db.projects.find((x) => x.id === id); if (rp) dropCustomLogo(rp); stop(id); revs.delete(id); db.projects = db.projects.filter((p) => p.id !== id); save(); return snapshot(); });
 ipcMain.handle('start', (_, id, script) => start(id, script));
 ipcMain.handle('stop', (_, id) => stop(id));
 ipcMain.handle('logs', (_, id) => logs.get(id) || []);

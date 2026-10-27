@@ -81,6 +81,11 @@ jobs:
           java-version: 17
       - run: npm install
       - run: npx cap add android
+      # same automatic version as the Windows build
+      - name: Set APK version
+        run: |
+          sed -i -E 's/versionCode [0-9]+/versionCode ${{ github.run_number }}/; s/versionName "[^"]*"/versionName "${{ needs.check.outputs.version }}"/' android/app/build.gradle
+          grep -E 'versionCode|versionName' android/app/build.gradle
       - run: npx cap sync android
       - run: chmod +x gradlew && ./gradlew assembleDebug
         working-directory: mobile/android

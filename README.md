@@ -23,7 +23,8 @@
 | **Find projects** | Add one project folder, or a folder full of projects. Every `package.json` with a runnable script shows up as a card. |
 | **Install only when needed** | Ember runs `npm` / `pnpm` / `yarn` / `bun install` only when `node_modules` is missing or older than the lock file. |
 | **One click to run** | Pick the script, press ▶. The local URL is detected from the output and opens with 🔗. Live log in the bottom panel. |
-| **Your own categories** | Out of the box there is one category, *Project type* (website, game, mobile, desktop, API, other). Add, rename or delete categories (client, status, …) and their values, each with an icon and a name, in ⚙️ Settings → *Categories*. Filter by any of them in the sidebar; search matches them too. |
+| **Your own categories** | Out of the box there is one category, *Project type* (website, game, mobile, desktop, API, other). Add, rename or delete categories (client, status, …) and their values, each with an icon and a name, in ⚙️ Settings → *Categories*. Every category gets an automatic **All** item. Filter by any of them in the sidebar; search matches them too. |
+| **Project logos** | Each card shows the project's own favicon/logo when Ember finds one (`public/favicon.svg`, `public/logo.png`, …), or a picture you choose (✎ → Logo). Without one, the category icon or the first letter is shown. |
 | **"Updated — test it" badge** | When a project changed since you last ran it in Ember (a new commit, or newer files for folders without git), its card gets a 🆕 badge and a Windows notification. Running it (or *✓ Tested*) clears the badge. |
 | **New commits on GitHub** | Ember runs `git fetch` every few minutes (default 15). Commits you have not pulled yet show as *⬇ N new commits* with a **Pull** button (`git pull --ff-only`). |
 | **Settings** | General (notifications, stay in tray, start with Windows), categories, project updates, Ember updates, phone access, About. |

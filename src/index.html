@@ -8,33 +8,55 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<aside>
-  <div class="brand"><img src="icon.svg" alt=""><div><b>Ember</b><small>اخگر</small></div></div>
-  <button id="add" class="btn primary wide local">＋ افزودن پوشه پروژه</button>
-  <div id="groups"></div>
-  <div class="foot local">
-    <button id="remoteBtn" class="btn ghost wide">📱 دسترسی از موبایل</button>
-    <button id="settingsBtn" class="btn ghost wide">⚙️ تنظیمات<span id="settingsDot" class="badgeDot" hidden title="نسخه‌ی جدید موجود است"></span></button>
-  </div>
-</aside>
+<header class="topbar">
+  <div class="brand"><img src="icon.svg" alt=""><b>Ember</b><span class="ver" id="ver" hidden></span></div>
+  <input id="q" type="search" placeholder="جستجوی پروژه، دسته‌بندی یا مسیر…">
+  <nav class="tools">
+    <button id="add" class="tbtn local"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>افزودن پروژه</button>
+    <button id="remoteBtn" class="tbtn local"><svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg>موبایل</button>
+    <button id="settingsBtn" class="tbtn local"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>تنظیمات<span id="settingsDot" class="badgeDot" hidden title="نسخه‌ی جدید موجود است"></span></button>
+  </nav>
+</header>
 
-<main>
-  <header>
-    <input id="q" type="search" placeholder="جستجوی پروژه، دسته‌بندی یا مسیر…">
-    <span id="stats"></span>
-  </header>
-  <div id="banners"></div>
-  <section id="grid"></section>
-  <section id="logPanel" hidden>
-    <div class="logHead"><b id="logTitle"></b><button class="btn ghost" id="logClose">✕</button></div>
-    <pre id="log"></pre>
-  </section>
-</main>
+<div class="layout">
+  <aside><div id="groups"></div></aside>
+  <main>
+    <div class="scroll">
+      <div class="pagehead">
+        <h1 id="pageTitle">پروژه‌ها</h1>
+        <p id="stats"></p>
+      </div>
+      <div id="banners"></div>
+      <section id="grid"></section>
+    </div>
+    <section id="logPanel" hidden>
+      <div class="logHead"><b id="logTitle"></b><button class="btn ghost" id="logClose">✕</button></div>
+      <pre id="log"></pre>
+    </section>
+  </main>
+</div>
 
 <dialog id="editDlg">
-  <h3>ویرایش پروژه</h3>
-  <label>نام<input id="eName"></label>
-  <div id="eCats"></div>
+  <h2>ویرایش پروژه</h2>
+  <div class="box">
+    <div class="sec">لوگو</div>
+    <div class="logoEdit">
+      <div class="logo big" id="eLogo"></div>
+      <div>
+        <div class="dlgRow">
+          <button class="btn" id="eLogoPick">انتخاب تصویر…</button>
+          <button class="btn ghost" id="eLogoAuto">خودکار</button>
+          <button class="btn ghost" id="eLogoNone">بدون لوگو</button>
+        </div>
+        <p class="hint" id="eLogoHint"></p>
+      </div>
+    </div>
+  </div>
+  <div class="box">
+    <div class="sec">مشخصات</div>
+    <label>نام<input id="eName"></label>
+    <div id="eCats"></div>
+  </div>
   <div class="dlgActions">
     <button class="btn danger" id="eRemove">حذف از لیست</button>
     <span style="flex:1"></span>
@@ -45,7 +67,7 @@
 
 <dialog id="setDlg" class="settings">
   <nav id="setTabs">
-    <h3>تنظیمات</h3>
+    <div class="side-h">تنظیمات</div>
     <button class="nav" data-tab="general">🧩 عمومی</button>
     <button class="nav" data-tab="cats">🏷️ دسته‌بندی‌ها</button>
     <button class="nav" data-tab="projects">🆕 بروزرسانی پروژه‌ها</button>
@@ -55,63 +77,96 @@
   </nav>
   <div class="pane">
     <section data-pane="general">
-      <h4>عمومی</h4>
-      <label class="switch"><input type="checkbox" data-set="notify"><span>اعلان‌های ویندوز<small>وقتی پروژه‌ای بروز شد یا نسخه‌ی جدید Ember آمد، اعلان نشان بده.</small></span></label>
-      <label class="switch"><input type="checkbox" data-set="tray"><span>با بستن پنجره در System Tray بماند<small>تا پروژه‌ها اجرا بمانند و اعلان‌ها برسند. خروج کامل از منوی آیکون کنار ساعت.</small></span></label>
-      <label class="switch"><input type="checkbox" data-set="autostart"><span>اجرا همراه ویندوز<small>فقط در نسخه‌ی نصب‌شده یا پرتابل.</small></span></label>
-      <div class="dlgRow"><button class="btn ghost" id="sData">📂 پوشه‌ی تنظیمات و داده‌ها</button></div>
+      <h2>عمومی</h2>
+      <div class="box">
+        <div class="sec">اعلان‌ها و پنجره</div>
+        <label class="switch"><input type="checkbox" data-set="notify"><span>اعلان‌های ویندوز<small>وقتی پروژه‌ای بروز شد یا نسخه‌ی جدید Ember آمد، اعلان نشان بده.</small></span></label>
+        <label class="switch"><input type="checkbox" data-set="tray"><span>با بستن پنجره در System Tray بماند<small>تا پروژه‌ها اجرا بمانند و اعلان‌ها برسند. خروج کامل از منوی آیکون کنار ساعت.</small></span></label>
+        <label class="switch"><input type="checkbox" data-set="autostart"><span>اجرا همراه ویندوز<small>فقط در نسخه‌ی نصب‌شده یا پرتابل.</small></span></label>
+      </div>
+      <div class="box">
+        <div class="sec">داده‌ها</div>
+        <div class="dlgRow"><button class="btn" id="sData">📂 پوشه‌ی تنظیمات و داده‌ها</button></div>
+      </div>
     </section>
+
     <section data-pane="cats">
-      <h4>دسته‌بندی‌ها</h4>
-      <p class="hint">دسته‌بندی‌های خودتان را بسازید (مثلاً «نوع پروژه»، «مشتری»، «وضعیت») و برای هر کدام مقدارهایی با آیکون و نام تعریف کنید. هر پروژه در هر دسته‌بندی یک مقدار می‌گیرد (از دکمه‌ی ✎ روی کارت پروژه).</p>
+      <h2>دسته‌بندی‌ها</h2>
+      <p class="sub">دسته‌بندی‌های خودتان را بسازید (مثلاً «مشتری» یا «وضعیت») و برای هر کدام مقدارهایی با آیکون و نام تعریف کنید. هر پروژه در هر دسته‌بندی یک مقدار می‌گیرد (دکمه‌ی ✎ روی کارت پروژه). گزینه‌ی «همه» در هر دسته‌بندی خودکار است.</p>
       <div id="catList"></div>
       <button class="btn" id="addCat">＋ دسته‌بندی جدید</button>
       <div id="emojiPick" hidden></div>
     </section>
+
     <section data-pane="projects">
-      <h4>بروزرسانی پروژه‌ها</h4>
-      <p class="hint">اگر کد پروژه‌ای از آخرین باری که در Ember اجرایش کردید تغییر کند (کامیت جدید یا فایل‌های تازه)، کنار آن علامت <span class="pill">🆕 بروز شده — تست کنید</span> می‌آید. با اجرای پروژه یا دکمه‌ی «تست شد» علامت برداشته می‌شود.</p>
-      <label class="switch"><input type="checkbox" data-set="watchProjects"><span>علامت «بروز شده» روی پروژه‌ها</span></label>
-      <label class="switch"><input type="checkbox" data-set="fetchRemote"><span>کامیت‌های جدید گیت‌هاب را هم بررسی کن<small>با <code>git fetch</code> (بدون تغییر فایل‌ها). اگر کامیتی هنوز pull نشده باشد، دکمه‌ی «دریافت» نشان داده می‌شود.</small></span></label>
-      <label>هر چند دقیقه یک‌بار بررسی شود
-        <select id="sFetchMin"><option value="5">۵ دقیقه</option><option value="15">۱۵ دقیقه</option><option value="30">۳۰ دقیقه</option><option value="60">۱ ساعت</option><option value="180">۳ ساعت</option></select>
-      </label>
-      <div class="dlgRow"><button class="btn" id="sCheckProjects">🔄 همین حالا بررسی کن</button><span id="sProjMsg" class="hint"></span></div>
+      <h2>بروزرسانی پروژه‌ها</h2>
+      <p class="sub">اگر کد پروژه‌ای از آخرین باری که در Ember اجرایش کردید تغییر کند (کامیت جدید یا فایل‌های تازه)، کنار آن علامت <span class="pill">🆕 بروز شده — تست کنید</span> می‌آید. با اجرای پروژه یا دکمه‌ی «تست شد» برداشته می‌شود.</p>
+      <div class="box">
+        <div class="sec">بررسی</div>
+        <label class="switch"><input type="checkbox" data-set="watchProjects"><span>علامت «بروز شده» روی پروژه‌ها</span></label>
+        <label class="switch"><input type="checkbox" data-set="fetchRemote"><span>کامیت‌های جدید گیت‌هاب را هم بررسی کن<small>با <code>git fetch</code> (بدون تغییر فایل‌ها). اگر کامیتی هنوز pull نشده باشد، دکمه‌ی «دریافت» نشان داده می‌شود.</small></span></label>
+        <label>هر چند دقیقه یک‌بار بررسی شود
+          <select id="sFetchMin"><option value="5">۵ دقیقه</option><option value="15">۱۵ دقیقه</option><option value="30">۳۰ دقیقه</option><option value="60">۱ ساعت</option><option value="180">۳ ساعت</option></select>
+        </label>
+        <div class="dlgRow"><button class="btn" id="sCheckProjects">🔄 همین حالا بررسی کن</button><span id="sProjMsg" class="hint"></span></div>
+      </div>
     </section>
+
     <section data-pane="updates">
-      <h4>بروزرسانی Ember</h4>
-      <div class="info">نسخه‌ی فعلی: <code id="uCur"></code><br><span id="uStatus"></span></div>
-      <div id="uProgress" class="progress" hidden><i></i></div>
-      <div id="uNotes" class="notes" hidden></div>
-      <label class="switch"><input type="checkbox" data-set="checkUpdates"><span>بررسی خودکار نسخه‌ی جدید<small>هنگام شروع و هر ۶ ساعت از GitHub Releases.</small></span></label>
-      <div class="dlgRow">
-        <button class="btn" id="uCheck">🔍 بررسی بروزرسانی</button>
-        <button class="btn primary" id="uInstall" hidden>⬇ دانلود و نصب</button>
-        <button class="btn ghost" id="uPage">صفحه‌ی Releases</button>
+      <h2>بروزرسانی Ember</h2>
+      <div class="box">
+        <div class="sec">نسخه</div>
+        <div class="verRow">نسخه‌ی فعلی <code id="uCur"></code></div>
+        <div id="uStatus"></div>
+        <div id="uProgress" class="progress" hidden><i></i></div>
+        <div id="uNotes" class="notes" hidden></div>
+        <div class="dlgRow">
+          <button class="btn primary" id="uInstall" hidden>⬇ دانلود و نصب</button>
+          <button class="btn" id="uCheck">🔍 بررسی بروزرسانی</button>
+          <button class="btn ghost" id="uPage">صفحه‌ی Releases</button>
+        </div>
+      </div>
+      <div class="box">
+        <div class="sec">خودکار</div>
+        <label class="switch"><input type="checkbox" data-set="checkUpdates"><span>بررسی خودکار نسخه‌ی جدید<small>هنگام شروع و هر ۶ ساعت از GitHub Releases. هر پوش به main یک نسخه‌ی جدید با شماره‌ی خودکار منتشر می‌کند.</small></span></label>
       </div>
     </section>
+
     <section data-pane="remote">
-      <h4>دسترسی از موبایل</h4>
-      <label class="switch"><input type="checkbox" id="rOn"><span>فعال‌سازی (فقط در شبکه محلی)</span></label>
-      <div id="rInfo" class="info"></div>
-      <p class="hint">اپ Ember Remote (APK) را باز کنید، آی‌پی و PIN را وارد کنید. برای تست پروژه روی گوشی، سرور dev باید روی همه‌ی کارت‌های شبکه گوش دهد (مثلاً <code>vite --host</code>) و فایروال ویندوز اجازه بدهد.</p>
-      <div class="dlgRow"><button class="btn ghost" id="rPin">PIN جدید</button><button class="btn ghost" id="rApk">دانلود APK</button></div>
-    </section>
-    <section data-pane="about" class="about">
-      <img src="icon.svg" alt="" width="84" height="84">
-      <h2>Ember <small>اخگر</small></h2>
-      <div class="hint">نسخه <code id="aVer"></code></div>
-      <p>لانچر پروژه‌های Node: پوشه را اضافه کنید، Ember پروژه‌ها را پیدا، پکیج‌ها را در صورت نیاز نصب و اجرا می‌کند.</p>
-      <p>ساخته‌ی <b>Usef Farahmand</b> · Jolly Panda Works</p>
-      <div class="dlgRow center">
-        <button class="btn ghost" data-link="">GitHub</button>
-        <button class="btn ghost" data-link="/releases">Releases</button>
-        <button class="btn ghost" data-link="/issues/new?template=bug_report.yml">گزارش مشکل</button>
-        <button class="btn ghost" data-link="/issues/new?template=feature_request.yml">پیشنهاد قابلیت</button>
+      <h2>دسترسی از موبایل</h2>
+      <div class="box">
+        <div class="sec">اتصال</div>
+        <label class="switch"><input type="checkbox" id="rOn"><span>فعال‌سازی (فقط در شبکه محلی)</span></label>
+        <div id="rInfo" class="info"></div>
+        <div class="dlgRow"><button class="btn" id="rPin">PIN جدید</button><button class="btn ghost" id="rApk">دانلود APK</button></div>
       </div>
-      <p class="hint">متن‌باز با مجوز MIT. بدون تله‌متری: تنها ارتباط اینترنتی، بررسی نسخه‌ی جدید از GitHub و <code>git fetch</code> پروژه‌های خودتان است.</p>
+      <p class="hint">اپ Ember Remote (APK) را باز کنید، آی‌پی و PIN را وارد کنید. برای تست پروژه روی گوشی، سرور dev باید روی همه‌ی کارت‌های شبکه گوش دهد (مثلاً <code>vite --host</code>) و فایروال ویندوز اجازه بدهد.</p>
     </section>
-    <div class="dlgActions"><span style="flex:1"></span><button class="btn primary" id="setClose">بستن</button></div>
+
+    <section data-pane="about">
+      <h2>درباره</h2>
+      <div class="box">
+        <div class="sec">درباره</div>
+        <div class="about">
+          <img src="icon.svg" alt="" width="76" height="76">
+          <div>
+            <b class="aName">Ember <small>اخگر</small></b>
+            <div class="muted">نسخه <span id="aVer"></span></div>
+            <div>ساخته‌ی Usef Farahmand</div>
+            <a href="#" data-link-abs="https://www.useffarahmand.com/">www.useffarahmand.com</a>
+          </div>
+        </div>
+        <p class="muted">لانچر پروژه‌های Node: پوشه را اضافه کنید، Ember پروژه‌ها را پیدا، پکیج‌ها را در صورت نیاز نصب و اجرا می‌کند و وقتی پروژه‌ای بروز شد خبرتان می‌کند.</p>
+        <div class="dlgRow">
+          <button class="btn" data-link-abs="https://www.useffarahmand.com/">وب‌سایت</button>
+          <button class="btn" data-link="">GitHub</button>
+          <button class="btn" data-link="/releases">Releases</button>
+          <button class="btn" data-link="/issues/new?template=bug_report.yml">گزارش مشکل</button>
+        </div>
+        <p class="hint">منتشر شده با مجوز MIT · بدون تله‌متری: تنها ارتباط اینترنتی، بررسی نسخه‌ی جدید از GitHub و <code>git fetch</code> پروژه‌های خودتان است.</p>
+      </div>
+    </section>
+    <div class="dlgActions"><span style="flex:1"></span><button class="btn primary" id="setClose">تمام</button></div>
   </div>
 </dialog>
 <script src="app.js"></script>
