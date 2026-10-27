@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, Notification, Tray, net } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, Notification, Tray, net, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const { spawn, execFile } = require('child_process');
 const updates = require('./updates');
 const watch = require('./projectwatch');
+const ports = require('./ports');
 
 const SRC = path.join(__dirname, 'src');
 const RUNNABLE = ['dev', 'start', 'serve', 'develop', 'preview', 'watch'];
@@ -196,7 +197,7 @@ function snapshot() {
     if (p.script && !scripts.includes(p.script) && pkg && pkg.scripts && pkg.scripts[p.script]) scripts.push(p.script);
     return {
       ...p, exists: !!pkg, scripts, pm: detectPM(p.path),
-      status: st ? st.status : 'stopped', url: st ? st.url : null,
+      status: st ? st.status : 'stopped', url: st ? st.url : null, port: st && st.port ? st.port : p.port || null,
       needsInstall: st ? false : needsInstall(p.path),
       ...projectUpdate(p),
       ...logoInfo(p),
@@ -224,13 +225,14 @@ function pushState(id) {
     type: 'state', id,
     status: st ? st.status : 'stopped',
     url: st ? st.url : null,
+    port: st && st.port ? st.port : p ? p.port || null : null,
     needsInstall: st || !p ? false : needsInstall(p.path),
     ...(p ? projectUpdate(p) : {}),
   });
 }
 
 /* ---------- run / stop ---------- */
-function exec(p, st, cmd, done) {
+function exec(p, st, cmd, done, extraEnv = {}) {
   addLog(p.id, `$ ${cmd}\n`);
   let finished = false;
   const end = (code) => { if (finished) return; finished = true; st.child = null; done(code); };
@@ -238,7 +240,7 @@ function exec(p, st, cmd, done) {
   try {
     child = spawn(cmd, {
       cwd: p.path, shell: true, windowsHide: true, detached: process.platform !== 'win32',
-      env: { ...process.env, BROWSER: 'none', FORCE_COLOR: '0' },
+      env: { ...process.env, BROWSER: 'none', FORCE_COLOR: '0', ...extraEnv },
     });
   } catch (e) { addLog(p.id, String(e) + '\n'); return end(1); }
   st.child = child;
@@ -247,7 +249,13 @@ function exec(p, st, cmd, done) {
     addLog(p.id, t);
     if (!st.url) {
       const m = t.match(URL_RE);
-      if (m) { st.url = `http://localhost:${m[1]}`; pushState(p.id); }
+      if (m) {
+        st.url = `http://localhost:${m[1]}`;
+        // the server may pick its own port (no flag, or it moved on); remember what it really uses
+        const real = Number(m[1]);
+        if (st.port && real !== st.port) { st.port = real; p.port = real; save(); }
+        pushState(p.id);
+      }
     }
   };
   child.stdout.on('data', onData);
@@ -262,13 +270,25 @@ function start(id, script) {
   if (script && script !== p.script) { p.script = script; save(); }
   markTested(p);
   const pm = detectPM(p.path);
-  const st = { child: null, status: 'installing', url: null, stopping: false };
+  const st = { child: null, status: 'installing', url: null, stopping: false, port: null };
   procs.set(id, st);
   logs.set(id, []);
   const finish = () => { procs.delete(id); pushState(id); };
-  const runIt = () => {
+  const runIt = async () => {
+    // every project gets its own port; a busy one moves to the next free port
+    const pkg = readPkg(p.path);
+    const tool = ports.detectTool(pkg && pkg.scripts ? pkg.scripts[p.script] : '');
+    const taken = new Set([db.settings.port]);
+    for (const o of db.projects) if (o.id !== p.id && o.port) taken.add(o.port);
+    for (const o of procs.values()) if (o !== st && o.port) taken.add(o.port);
+    const wanted = p.port || tool.defaultPort;
+    const port = await ports.findFreePort(wanted, taken);
+    if (st.stopping) return finish();
+    if (p.port && port !== p.port) addLog(id, `⚠ Port ${p.port} is busy, using ${port}.\n`);
+    if (port !== p.port) { p.port = port; save(); }
+    st.port = port;
     st.status = 'running'; pushState(id);
-    exec(p, st, `${pm} run ${p.script}`, () => finish());
+    exec(p, st, ports.runCommand(pm, p.script, tool.flag, port), () => finish(), { PORT: String(port) });
   };
   if (needsInstall(p.path)) {
     pushState(id);
@@ -534,7 +554,13 @@ ipcMain.handle('add', async () => {
 ipcMain.handle('update', (_, id, patch) => {
   const p = db.projects.find((x) => x.id === id);
   if (p) {
-    for (const k of ['name', 'script']) if (k in patch) p[k] = patch[k];
+    if (typeof patch.name === 'string' && patch.name.trim()) p.name = patch.name.trim().slice(0, 80);
+    if (typeof patch.script === 'string') p.script = patch.script;
+    if ('port' in patch) {
+      const n = Number(patch.port);
+      if (patch.port === null || patch.port === '') delete p.port;
+      else if (Number.isInteger(n) && n > 0 && n < 65536) p.port = n;
+    }
     if (patch.cats && typeof patch.cats === 'object') {
       p.cats = {};
       for (const c of db.categories) if (c.values.some((v) => v.id === patch.cats[c.id])) p.cats[c.id] = patch.cats[c.id];
@@ -580,7 +606,9 @@ ipcMain.handle('dismissJustUpdated', () => { justUpdated = null; });
 /* ---------- window ---------- */
 function createWindow() {
   win = new BrowserWindow({
-    width: 1280, height: 800, minWidth: 900, minHeight: 600, title: 'Ember', backgroundColor: '#14100d',
+    width: 1280, height: 800, minWidth: 900, minHeight: 600, title: 'Ember', backgroundColor: '#110D0A',
+    // the top bar of the page is the title bar, in the app's colours (like SnapshotAll / DeskPresence)
+    ...(process.platform === 'win32' ? { titleBarStyle: 'hidden', titleBarOverlay: { color: '#16110D', symbolColor: '#F5EEE8', height: 56 } } : {}),
     icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
   });
@@ -593,6 +621,6 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 app.on('second-instance', () => showWindow());
 app.setAppUserModelId('app.ember.launcher');   // Windows notifications need it
-app.whenReady().then(() => { if (!gotLock) return; load(); noteVersion(); createWindow(); applyRemote(); applyTray(); applyAutostart(); scheduleChecks(); });
+app.whenReady().then(() => { if (!gotLock) return; nativeTheme.themeSource = 'dark'; load(); noteVersion(); createWindow(); applyRemote(); applyTray(); applyAutostart(); scheduleChecks(); });
 app.on('before-quit', () => { quitting = true; procs.forEach((st) => st.child && killTree(st.child.pid)); });
 app.on('window-all-closed', () => { if (!tray) app.quit(); });

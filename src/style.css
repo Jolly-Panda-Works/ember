@@ -24,7 +24,7 @@ a{color:var(--o)}
 ::-webkit-scrollbar-corner{background:transparent}
 
 /* ---------- top bar ---------- */
-.topbar{flex:none;height:64px;display:flex;align-items:center;gap:18px;padding:0 22px;background:var(--toolbar);border-bottom:1px solid #00000055}
+.topbar{flex:none;height:56px;display:flex;align-items:center;gap:18px;padding:0 22px;background:var(--toolbar);border-bottom:1px solid #00000055}
 .brand{display:flex;align-items:center;gap:12px;flex:none}
 .brand img{width:34px;height:34px}
 .brand b{font-size:19px;font-weight:700}
@@ -38,6 +38,10 @@ a{color:var(--o)}
 .tbtn svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .badgeDot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--o);box-shadow:0 0 0 3px #F9731633;margin-inline-start:4px}
 .badgeDot[hidden]{display:none}
+
+/* on Windows the top bar is the title bar: drag the window by it, keep room for the window buttons */
+body.win .topbar{-webkit-app-region:drag;padding-right:154px}
+body.win .topbar input,body.win .topbar button{-webkit-app-region:no-drag}
 
 /* ---------- sidebar ---------- */
 .layout{flex:1;min-height:0;display:flex}
@@ -70,7 +74,15 @@ main{flex:1;min-width:0;display:flex;flex-direction:column}
 @keyframes flash{0%,60%{box-shadow:0 0 0 4px #F9731655}100%{box-shadow:none}}
 .top{display:flex;align-items:center;gap:12px}
 .ttl{flex:1;min-width:0}
-.ttl h3{margin:0;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ttl h3{margin:0;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:text}
+.remote .ttl h3{cursor:default}
+.rename{width:100%;font-size:16px;font-weight:700;background:var(--field);color:var(--text);border:1px solid var(--o);border-radius:8px;padding:2px 8px;outline:0}
+.port{direction:ltr;unicode-bidi:isolate;font-family:Consolas,monospace;color:var(--faint);margin-inline-start:6px}
+.icon{flex:none;align-self:flex-start;width:32px;height:32px;display:grid;place-items:center;background:none;border:1px solid transparent;border-radius:9px;color:var(--muted);cursor:pointer;font-size:15px}
+.icon:hover{background:var(--panel-h);border-color:var(--line);color:var(--text)}
+.pathRow{display:flex;align-items:center;gap:4px;margin:-4px 0}
+.pathRow .path{flex:1;min-width:0}
+.pathRow .icon{align-self:center;width:28px;height:28px;font-size:14px}
 .state{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12.5px}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none}
 .running .dot{background:var(--green);box-shadow:0 0 0 3px #4ADE8026}

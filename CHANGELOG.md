@@ -5,6 +5,9 @@ Release builds are published automatically from `main`. See the
 
 ## 1.0
 
+- Each project gets its own port; a busy port moves to the next free one (`--port` / `-p` for known dev servers, `PORT` for the rest). The port shows on the card and can be set in ✎.
+- On Windows the top bar is the title bar, in the app's colours.
+- Rename a project by double-clicking its name. ✎ moved to the card's corner, 📂 next to the path.
 - New look, matching SnapshotAll and DeskPresence: top bar with the version, sidebar, page title, cards with orange section titles, pill switches, themed scrollbars.
 - Every category has an automatic *All* item.
 - Project logos: found automatically (favicon / logo in the project) or chosen by you.

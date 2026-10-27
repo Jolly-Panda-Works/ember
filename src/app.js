@@ -20,6 +20,7 @@ const api = window.ember || {
   onEvent: (cb) => { const es = new EventSource('/api/events?pin=' + encodeURIComponent(PIN)); es.onmessage = (e) => cb(JSON.parse(e.data)); },
 };
 document.body.classList.toggle('remote', isRemote);
+document.body.classList.toggle('win', !isRemote && api.platform === 'win32');   // page top bar = window title bar
 
 /* ---- state ---- */
 let items = [], cats = [], logId = null, editing = null;
@@ -89,10 +90,13 @@ function card(i) {
   const tags = cats.map((c) => valueOf(i, c)).filter(Boolean);
   return `<article class="card ${i.status} ${i.updated || i.behind > 0 ? 'updated' : ''}" data-id="${i.id}">
     <div class="top">${logoHtml(i)}
-      <div class="ttl"><h3 title="${esc(i.name)}">${esc(i.name)}</h3><div class="state"><span class="dot"></span>${STATUS[i.status]}</div></div>
-      ${i.updated ? '<span class="tag new">🆕 بروز شده</span>' : ''}</div>
+      <div class="ttl"><h3 class="name" title="${isRemote ? esc(i.name) : 'برای تغییر نام دوبار کلیک کنید'}">${esc(i.name)}</h3>
+        <div class="state"><span class="dot"></span>${STATUS[i.status]}${i.port ? `<span class="port" title="پورت">:${i.port}</span>` : ''}</div></div>
+      ${i.updated ? '<span class="tag new">🆕 بروز شده</span>' : ''}
+      <button class="icon local" data-act="edit" title="ویرایش (نام، لوگو، دسته‌بندی، پورت)">✎</button></div>
     ${tags.length ? `<div class="tags">${tags.map((v) => `<span class="tag">${esc(v.icon)} ${esc(v.name)}</span>`).join('')}</div>` : ''}
-    <div class="path" title="${esc(i.path)}">${esc(i.path)}</div>
+    <div class="pathRow"><div class="path" title="${esc(i.path)}">${esc(i.path)}</div>
+      <button class="icon local" data-act="folder" title="باز کردن پوشه">📂</button></div>
     <div class="row">
       <select ${busy ? 'disabled' : ''}>${i.scripts.map((s) => `<option ${s === i.script ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>
       <span class="pm">${i.pm}</span>${pkgState}
@@ -102,8 +106,6 @@ function card(i) {
              : `<button class="btn primary" data-act="start" ${i.exists ? '' : 'disabled'}>▶ اجرا</button>`}
       ${i.url ? '<button class="btn" data-act="open">🔗 باز کردن</button>' : ''}
       <button class="btn ghost" data-act="logs">📜 لاگ</button>
-      <button class="btn ghost local" data-act="folder" title="باز کردن پوشه">📂</button>
-      <button class="btn ghost local" data-act="edit" title="ویرایش">✎</button>
     </div></article>`;
 }
 
@@ -185,7 +187,25 @@ $('#grid').onclick = (e) => {
       break;
   }
 };
+// double-click a project name to rename it in place
+$('#grid').ondblclick = (e) => {
+  const h = e.target.closest('h3.name'); if (!h || isRemote) return;
+  const i = items.find((x) => x.id === h.closest('.card').dataset.id);
+  const inp = document.createElement('input');
+  inp.className = 'rename'; inp.value = i.name; inp.maxLength = 80;
+  h.replaceWith(inp); inp.focus(); inp.select();
+  let done = false;
+  const finish = async (ok) => {
+    if (done) return; done = true;
+    const name = inp.value.trim();
+    if (ok && name && name !== i.name) items = await api.update(i.id, { name });
+    render();
+  };
+  inp.onkeydown = (k) => { if (k.key === 'Enter') finish(true); else if (k.key === 'Escape') finish(false); };
+  inp.onblur = () => finish(true);
+};
 $('#grid').onchange = (e) => {
+  if (e.target.classList.contains('rename')) return;
   if (e.target.tagName !== 'SELECT' || isRemote) return;
   const i = items.find((x) => x.id === e.target.closest('.card').dataset.id);
   i.script = e.target.value; api.update(i.id, { script: i.script });
@@ -196,6 +216,7 @@ $('#add').onclick = async () => { items = await api.add(); render(); };
 function openEdit(i) {
   editing = i;
   $('#eName').value = i.name;
+  $('#ePort').value = i.port || '';
   fillLogo(i);
   $('#eCats').innerHTML = cats.map((c) => `<label>${esc(c.icon)} ${esc(c.name)}
     <select data-cid="${esc(c.id)}"><option value="">—</option>${c.values.map((v) =>
@@ -226,7 +247,7 @@ $('#eCancel').onclick = () => $('#editDlg').close();
 $('#eSave').onclick = async () => {
   const sel = {};
   document.querySelectorAll('#eCats select').forEach((el) => { if (el.value) sel[el.dataset.cid] = el.value; });
-  items = await api.update(editing.id, { name: $('#eName').value.trim() || editing.name, cats: sel });
+  items = await api.update(editing.id, { name: $('#eName').value.trim() || editing.name, cats: sel, port: $('#ePort').value.trim() });
   $('#editDlg').close(); render();
 };
 $('#eRemove').onclick = async () => {

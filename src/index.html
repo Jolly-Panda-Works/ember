@@ -54,7 +54,8 @@
   </div>
   <div class="box">
     <div class="sec">مشخصات</div>
-    <label>نام<input id="eName"></label>
+    <label>نام<input id="eName" maxlength="80"></label>
+    <label>پورت <small class="hint">— خالی = خودکار. اگر هنگام اجرا پر باشد، پورت آزاد بعدی انتخاب می‌شود.</small><input id="ePort" type="number" min="1" max="65535" placeholder="خودکار" dir="ltr"></label>
     <div id="eCats"></div>
   </div>
   <div class="dlgActions">
