@@ -21,8 +21,8 @@
     "dist": "electron-builder --win --publish never"
   },
   "devDependencies": {
-    "electron": "^31.0.0",
-    "electron-builder": "^24.13.3"
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0"
   },
   "build": {
     "appId": "app.ember.launcher",
