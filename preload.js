@@ -13,5 +13,6 @@ contextBridge.exposeInMainWorld('ember', {
   checkProjects: call('checkProjects'), markTested: call('markTested'), pull: call('pull'),
   checkAppUpdate: call('checkAppUpdate'), installAppUpdate: call('installAppUpdate'),
   dismissJustUpdated: call('dismissJustUpdated'),
+  ports: call('ports'), killPid: call('killPid'),
   onEvent: (cb) => ipcRenderer.on('evt', (_, e) => cb(e)),
 });

@@ -6,6 +6,7 @@ const { spawn, execFile } = require('child_process');
 const updates = require('./updates');
 const watch = require('./projectwatch');
 const ports = require('./ports');
+const netinfo = require('./netinfo');
 const I18N = require('./src/i18n');
 const T = (k, v) => I18N.make(db && db.settings.lang)(k, v);
 
@@ -235,36 +236,125 @@ function pushState(id) {
 }
 
 /* ---------- run / stop ---------- */
+/*
+ * Running projects. The output of a run goes to a log file instead of a pipe, and the process is
+ * started on its own (detached), so a dev server keeps running while Ember restarts for an update;
+ * the next Ember reconnects to it (p.run remembers the pid, port and log file).
+ */
+const logsDir = () => path.join(app.getPath('userData'), 'logs');
+const logFileOf = (id) => path.join(logsDir(), `${id}.log`);
+
+// output found in the log file: show it, and learn the URL (port) from it
+function onOutput(p, st, text) {
+  text = text.replace(ANSI, '');
+  addLog(p.id, text);
+  if (!st.url) {
+    const m = text.match(URL_RE);
+    if (m) {
+      st.url = `http://localhost:${m[1]}`;
+      st.port = Number(m[1]);   // the server may pick its own port; this is the one it really uses
+      if (p.run) { p.run.port = st.port; save(); }
+      pushState(p.id);
+    }
+  }
+}
+// follows the log file of a run (works the same for runs Ember started and runs it reconnected to)
+function tail(p, st, from = 0) {
+  let pos = from, busy = false;
+  st.tail = setInterval(() => {
+    if (busy) return;
+    busy = true;
+    fs.stat(st.log, (err, s) => {
+      if (err || s.size <= pos) { busy = false; return; }
+      const len = s.size - pos, buf = Buffer.alloc(len);
+      fs.open(st.log, 'r', (e1, fd) => {
+        if (e1) { busy = false; return; }
+        fs.read(fd, buf, 0, len, pos, (e2, n) => {
+          fs.close(fd, () => {});
+          pos += n || 0; busy = false;
+          if (n) onOutput(p, st, buf.slice(0, n).toString());
+        });
+      });
+    });
+  }, 250);
+}
+const note = (st, text) => { try { fs.appendFileSync(st.log, text); } catch {} };
+
 function exec(p, st, cmd, done, extraEnv = {}) {
-  addLog(p.id, `$ ${cmd}\n`);
+  note(st, `$ ${cmd}\n`);
   let finished = false;
-  const end = (code) => { if (finished) return; finished = true; st.child = null; done(code); };
-  let child;
+  const end = (code) => { if (finished) return; finished = true; st.child = null; st.pid = null; done(code); };
+  let child, fd;
   try {
+    fd = fs.openSync(st.log, 'a');
     child = spawn(cmd, {
-      cwd: p.path, shell: true, windowsHide: true, detached: process.platform !== 'win32',
+      cwd: p.path, shell: true, windowsHide: true, detached: true, stdio: ['ignore', fd, fd],
       env: { ...process.env, BROWSER: 'none', FORCE_COLOR: '0', ...extraEnv },
     });
-  } catch (e) { addLog(p.id, String(e) + '\n'); return end(1); }
-  st.child = child;
-  const onData = (d) => {
-    const t = d.toString().replace(ANSI, '');
-    addLog(p.id, t);
-    if (!st.url) {
-      const m = t.match(URL_RE);
-      if (m) {
-        st.url = `http://localhost:${m[1]}`;
-        // the server may pick its own port (no flag, or it moved on); remember what it really uses
-        const real = Number(m[1]);
-        if (st.port && real !== st.port) { st.port = real; p.port = real; save(); }
-        pushState(p.id);
-      }
+  } catch (e) { note(st, String(e) + '\n'); return end(1); }
+  finally { if (fd !== undefined) fs.closeSync(fd); }
+  st.child = child; st.pid = child.pid;
+  child.on('error', (e) => { note(st, String(e) + '\n'); end(1); });
+  child.on('exit', (code) => setTimeout(() => end(code), 400));   // let the last output reach the log first
+}
+
+function finishRun(id) {
+  const st = procs.get(id);
+  if (st && st.tail) clearInterval(st.tail);
+  if (st && st.watch) clearInterval(st.watch);
+  procs.delete(id);
+  const p = db.projects.find((x) => x.id === id);
+  if (p && p.run) { delete p.run; save(); }
+  pushState(id);
+}
+
+// pid -> project id of every run Ember knows (to tell which ports are ours)
+const runPids = () => new Map([...procs].filter(([, st]) => st.pid).map(([id, st]) => [st.pid, id]));
+
+// Is this project already running (left over from before Ember restarted, or started outside Ember)?
+// Then show it as running on its port instead of starting a second copy on the next port.
+async function findRunning(p) {
+  try {
+    const rows = await netinfo.report(db.projects, runPids());
+    return rows.find((r) => r.projectId === p.id) || null;
+  } catch { return null; }
+}
+function adopt(p, { pid, port, log, from }) {
+  const st = { child: null, pid, status: 'running', url: port ? `http://localhost:${port}` : null, port: port || null, stopping: false, adopted: true, log: log || logFileOf(p.id) };
+  procs.set(p.id, st);
+  logs.set(p.id, []);
+  if (log && fs.existsSync(log)) {
+    const old = fs.readFileSync(log, 'utf8').replace(ANSI, '');
+    if (old) addLog(p.id, old);
+  }
+  addLog(p.id, '\n' + T('log.reattached', { pid, port: port || '?' }) + '\n');
+  if (log) tail(p, st, from ?? (fs.existsSync(log) ? fs.statSync(log).size : 0));
+  // a process Ember did not start sends no "exit": check now and then whether it is still there
+  st.watch = setInterval(() => { if (!netinfo.pidAlive(st.pid)) { addLog(p.id, '\n' + T('log.ended') + '\n'); finishRun(p.id); } }, 2000);
+  p.run = { pid, port: port || null, log: st.log, cmd: p.run && p.run.cmd };
+  save();
+  pushState(p.id);
+}
+
+// after Ember starts: reconnect to the runs that are still going
+async function reattach() {
+  if (!db.projects.length) return;
+  let rows = [], table = new Map();
+  try { [rows, table] = await Promise.all([netinfo.report(db.projects, new Map()), netinfo.processes()]); } catch {}
+  for (const p of db.projects) {
+    if (procs.has(p.id)) continue;
+    const r = p.run;
+    // a run Ember started: its pid must still be alive and still be that command (pids are reused)
+    if (r && r.pid && netinfo.pidAlive(r.pid) && (!r.cmd || (table.get(r.pid) || {}).cmd?.includes(r.cmd))) {
+      const row = rows.find((x) => x.projectId === p.id);
+      adopt(p, { pid: r.pid, port: (row && row.port) || r.port, log: r.log });   // earlier output + follow new output
+      continue;
     }
-  };
-  child.stdout.on('data', onData);
-  child.stderr.on('data', onData);
-  child.on('error', (e) => { addLog(p.id, String(e) + '\n'); end(1); });
-  child.on('close', (code) => end(code));
+    if (r) { delete p.run; save(); }
+    // started some other way (an older Ember, a terminal): known by its folder in the command line
+    const row = rows.find((x) => x.projectId === p.id);
+    if (row) adopt(p, { pid: row.pid, port: row.port, log: null });
+  }
 }
 
 function start(id, script) {
@@ -273,46 +363,65 @@ function start(id, script) {
   if (script && script !== p.script) { p.script = script; save(); }
   markTested(p);
   const pm = detectPM(p.path);
-  const st = { child: null, status: 'installing', url: null, stopping: false, port: null };
+  fs.mkdirSync(logsDir(), { recursive: true });
+  const st = { child: null, pid: null, status: 'installing', url: null, stopping: false, port: null, log: logFileOf(id) };
+  fs.writeFileSync(st.log, '');
   procs.set(id, st);
   logs.set(id, []);
-  const finish = () => { procs.delete(id); pushState(id); };
+  broadcast({ type: 'logClear', id });
+  tail(p, st, 0);
+  const finish = () => finishRun(id);
   const runIt = async () => {
-    // every project gets its own port; a busy one moves to the next free port
+    // already running on its port (e.g. left over from before an update)? Use that one.
+    const running = await findRunning(p);
+    if (st.stopping) return finish();
+    if (running) {
+      clearInterval(st.tail); procs.delete(id);
+      return adopt(p, { pid: running.pid, port: running.port, log: null });
+    }
+    // only ports of projects running right now are off limits; a project's port is a preference
     const pkg = readPkg(p.path);
     const tool = ports.detectTool(pkg && pkg.scripts ? pkg.scripts[p.script] : '');
     const taken = new Set();
-    for (const o of db.projects) if (o.id !== p.id && o.port) taken.add(o.port);
-    for (const o of procs.values()) if (o !== st && o.port) taken.add(o.port);
+    for (const [oid, o] of procs) if (oid !== id && o.port) taken.add(o.port);
     const wanted = p.port || tool.defaultPort;
     const port = await ports.findFreePort(wanted, taken);
     if (st.stopping) return finish();
-    if (p.port && port !== p.port) addLog(id, T('log.portBusy', { a: p.port, b: port }) + '\n');
-    if (port !== p.port) { p.port = port; save(); }
+    if (port !== wanted) note(st, T('log.portBusy', { a: wanted, b: port }) + '\n');
+    if (!p.port) { p.port = port; save(); }   // first run: remember it; later runs keep the preference
     st.port = port;
     st.status = 'running'; pushState(id);
-    exec(p, st, ports.runCommand(pm, p.script, tool.flag, port), () => finish(), { PORT: String(port) });
+    const cmd = ports.runCommand(pm, p.script, tool.flag, port);
+    exec(p, st, cmd, () => finish(), { PORT: String(port) });
+    if (st.pid) { p.run = { pid: st.pid, port, log: st.log, cmd }; save(); }
   };
   if (needsInstall(p.path)) {
     pushState(id);
     exec(p, st, `${pm} install`, (code) => {
       if (st.stopping) return finish();
       if (code === 0) return runIt();
-      addLog(id, '\n' + T('log.installFailed') + '\n');
-      finish();
+      note(st, '\n' + T('log.installFailed') + '\n');
+      setTimeout(finish, 400);
     });
   } else runIt();
 }
 
-function killTree(pid) {
-  if (process.platform === 'win32') execFile('taskkill', ['/pid', String(pid), '/T', '/F'], () => {});
-  else { try { process.kill(-pid, 'SIGTERM'); } catch {} }
+function killTree(pid, wait = false) {
+  if (!pid) return;
+  if (process.platform === 'win32') {
+    const args = ['/pid', String(pid), '/T', '/F'];
+    // when Ember is closing, wait for it, or the dev server outlives Ember
+    if (wait) { try { require('child_process').execFileSync('taskkill', args, { windowsHide: true, timeout: 8000, stdio: 'ignore' }); } catch {} }
+    else execFile('taskkill', args, { windowsHide: true }, () => {});
+  } else {
+    try { process.kill(-pid, 'SIGTERM'); } catch { try { process.kill(pid, 'SIGTERM'); } catch {} }
+  }
 }
 function stop(id) {
   const st = procs.get(id);
   if (!st) return;
   st.stopping = true;
-  if (st.child) killTree(st.child.pid);
+  killTree(st.pid);
 }
 
 const settingsOut = () => ({
@@ -521,7 +630,7 @@ async function installAppUpdate() {
     return appUpdate;
   }
   if (!appUpdate.ready) await downloadAppUpdate();
-  if (appUpdate.ready && runUpdate(true)) { quitting = true; setTimeout(() => app.quit(), 300); }
+  if (appUpdate.ready && runUpdate(true)) { quitting = true; keepRuns = true; setTimeout(() => app.quit(), 300); }
   return appUpdate;
 }
 
@@ -601,6 +710,11 @@ ipcMain.handle('remove', (_, id) => {
 ipcMain.handle('openProject', (_, id) => openProject(id));
 ipcMain.handle('editProject', (_, id) => { showWindow(); broadcast({ type: 'edit', id }); });
 ipcMain.handle('clearLog', (_, id) => { logs.set(id, []); broadcast({ type: 'logClear', id }); });
+ipcMain.handle('ports', async () => {
+  const rows = await netinfo.report(db.projects, runPids());
+  return rows.map((r) => ({ ...r, projectName: (db.projects.find((p) => p.id === r.projectId) || {}).name || null, running: procs.has(r.projectId) }));
+});
+ipcMain.handle('killPid', (_, pid) => { if (Number.isInteger(pid) && pid > 4 && pid !== process.pid) killTree(pid); });
 ipcMain.on('lang', (e) => { e.returnValue = db ? db.settings.lang : 'fa'; });
 ipcMain.handle('start', (_, id, script) => start(id, script));
 ipcMain.handle('stop', (_, id) => stop(id));
@@ -667,10 +781,15 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 app.on('second-instance', () => showWindow());
 app.setAppUserModelId('app.ember.launcher');   // Windows notifications need it
-app.whenReady().then(() => { if (!gotLock) return; nativeTheme.themeSource = 'dark'; load(); noteVersion(); cleanUpdates(); createWindow(); applyTray(); applyAutostart(); scheduleChecks(); });
+app.whenReady().then(() => { if (!gotLock) return; nativeTheme.themeSource = 'dark'; load(); noteVersion(); cleanUpdates(); createWindow(); applyTray(); applyAutostart(); scheduleChecks(); reattach(); });
+let keepRuns = false;   // true while restarting for an update: running projects go on, the new Ember reconnects
 app.on('before-quit', () => {
   quitting = true;
-  procs.forEach((st) => st.child && killTree(st.child.pid));
+  if (!keepRuns) {
+    procs.forEach((st) => killTree(st.pid, true));
+    db.projects.forEach((p) => delete p.run);
+    save();
+  }
   if (appUpdate.ready) runUpdate(false);   // a downloaded update installs quietly on exit
 });
 app.on('window-all-closed', () => { if (!tray) app.quit(); });

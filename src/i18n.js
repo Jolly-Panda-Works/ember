@@ -92,6 +92,7 @@
     'set.tab.cats': ['🏷️ دسته‌بندی‌ها', '🏷️ Categories'],
     'set.tab.projects': ['🆕 بروزرسانی پروژه‌ها', '🆕 Project updates'],
     'set.tab.updates': ['⬆️ بروزرسانی Ember', '⬆️ Ember updates'],
+    'set.tab.ports': ['🔌 پورت‌ها', '🔌 Ports'],
     'set.tab.about': ['ℹ️ درباره', 'ℹ️ About'],
     'set.done': ['تمام', 'Done'],
     'set.general': ['عمومی', 'General'],
@@ -136,6 +137,25 @@
     'set.report': ['گزارش مشکل', 'Report a bug'],
     'set.license': ['منتشر شده با مجوز MIT · بدون تله‌متری: تنها ارتباط اینترنتی، بررسی نسخه‌ی جدید از GitHub و git fetch پروژه‌های خودتان است.',
       'Released under the MIT License · No telemetry: the only internet traffic is the update check on GitHub and git fetch of your own projects.'],
+
+    // ports
+    'ports.title': ['پورت‌های مشغول', 'Ports in use'],
+    'ports.sub': ['همه‌ی پورت‌هایی که الان روی این کامپیوتر باز هستند. پورت‌هایی که مال پروژه‌های Ember است بالای لیست و مشخص است.', 'Every port that is open on this computer right now. Ports that belong to your Ember projects are at the top and marked.'],
+    'ports.refresh': ['🔄 بروزرسانی', '🔄 Refresh'],
+    'ports.onlyProjects': ['فقط پروژه‌های Ember', 'Only Ember projects'],
+    'ports.loading': ['در حال خواندن پورت‌ها…', 'Reading ports…'],
+    'ports.none': ['پورتی پیدا نشد.', 'No ports found.'],
+    'ports.port': ['پورت', 'Port'],
+    'ports.process': ['برنامه', 'Program'],
+    'ports.project': ['پروژه', 'Project'],
+    'ports.other': ['—', '—'],
+    'ports.byEmber': ['اجرا شده با Ember', 'run by Ember'],
+    'ports.byPath': ['از پوشه‌ی پروژه (بیرون از Ember اجرا شده)', 'from the project folder (started outside Ember)'],
+    'ports.open': ['باز کردن در مرورگر', 'Open in browser'],
+    'ports.openProject': ['پنجره‌ی پروژه', 'Project window'],
+    'ports.kill': ['پایان دادن', 'End'],
+    'ports.killQ': ['برنامه‌ی {name} (PID {pid}) روی پورت {port} بسته شود؟', 'End {name} (PID {pid}) on port {port}?'],
+    'ports.count': ['{n} پورت · {p} مال پروژه‌ها', '{n} ports · {p} belong to projects'],
 
     // categories editor
     'cat.allAuto': ['✦ همه — خودکار، همیشه اول لیست', '✦ All — automatic, always first'],
@@ -212,6 +232,8 @@
     'dlg.badImage': ['تصویر باید png، svg، jpg، webp، gif یا ico و کمتر از ۵ مگابایت باشد.', 'The picture must be png, svg, jpg, webp, gif or ico and smaller than 5 MB.'],
     'log.portBusy': ['⚠ پورت {a} پر است؛ از {b} استفاده می‌شود.', '⚠ Port {a} is busy, using {b}.'],
     'log.installFailed': ['✖ نصب پکیج‌ها ناموفق بود.', '✖ Install failed.'],
+    'log.reattached': ['↻ این پروژه از قبل در حال اجرا بود (PID {pid}، پورت {port}). Ember دوباره به آن وصل شد؛ اجرای دوم شروع نشد.', '↻ This project was already running (PID {pid}, port {port}). Ember reconnected to it instead of starting a second copy.'],
+    'log.ended': ['■ اجرا تمام شد.', '■ The run ended.'],
     'log.pulled': ['✔ دریافت شد.', '✔ Pulled.'],
     'log.pullFailed': ['✖ دریافت ناموفق بود.', '✖ Pull failed.'],
   };

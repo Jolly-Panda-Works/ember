@@ -68,6 +68,7 @@
     <button class="nav" data-tab="cats" data-i18n="set.tab.cats"></button>
     <button class="nav" data-tab="projects" data-i18n="set.tab.projects"></button>
     <button class="nav" data-tab="updates"><span data-i18n="set.tab.updates"></span><span id="tabDot" class="badgeDot" hidden></span></button>
+    <button class="nav" data-tab="ports" data-i18n="set.tab.ports"></button>
     <button class="nav" data-tab="about" data-i18n="set.tab.about"></button>
   </nav>
   <div class="pane">
@@ -127,6 +128,17 @@
           </div>
         </div>
         <p class="hint" data-i18n="set.howTo"></p>
+      </section>
+
+      <section data-pane="ports">
+        <h2 data-i18n="ports.title"></h2>
+        <p class="sub" data-i18n="ports.sub"></p>
+        <div class="dlgRow portsBar">
+          <button class="btn" id="pRefresh" data-i18n="ports.refresh"></button>
+          <label class="switch small"><input type="checkbox" id="pOnly"><span data-i18n="ports.onlyProjects"></span></label>
+          <span class="hint" id="pCount"></span>
+        </div>
+        <div id="portList" class="portList"></div>
       </section>
 
       <section data-pane="about">

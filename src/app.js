@@ -322,6 +322,48 @@ document.addEventListener('mousedown', (e) => { if (!pick.hidden && !pick.contai
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pick.hidden) { e.preventDefault(); e.stopPropagation(); pick.hidden = true; } }, true);
 $('#setDlg').addEventListener('close', () => { if (catTimer) saveCats(false); pick.hidden = true; });
 
+/* ---- ports (settings → ports) ---- */
+let portRows = [], portsBusy = false;
+async function loadPorts() {
+  if (portsBusy) return;
+  portsBusy = true;
+  $('#portList').innerHTML = `<p class="hint">${t('ports.loading')}</p>`;
+  try { portRows = await api.ports(); } catch { portRows = []; }
+  portsBusy = false;
+  renderPorts();
+}
+function renderPorts() {
+  const only = $('#pOnly').checked;
+  const rows = portRows.filter((r) => !only || r.projectId);
+  $('#pCount').textContent = t('ports.count', { n: portRows.length, p: portRows.filter((r) => r.projectId).length });
+  $('#portList').innerHTML = rows.length ? `<table class="ports"><thead><tr>
+      <th>${t('ports.port')}</th><th>${t('ports.process')}</th><th>${t('ports.project')}</th><th></th></tr></thead><tbody>
+    ${rows.map((r) => `<tr class="${r.projectId ? 'mine' : ''}" data-pid="${r.pid}" data-port="${r.port}">
+      <td class="pnum">${r.port}</td>
+      <td title="${esc(r.cmd)}"><b>${esc(r.name || '?')}</b> <small class="hint">PID ${r.pid}</small></td>
+      <td>${r.projectId ? `<span class="tag ${r.how === 'ember' ? 'new' : ''}" title="${t(r.how === 'ember' ? 'ports.byEmber' : 'ports.byPath')}">${esc(r.projectName)}</span>` : `<span class="hint">${t('ports.other')}</span>`}</td>
+      <td class="pact">
+        <button class="icon" data-pa="open" title="${t('ports.open')}">🔗</button>
+        ${r.projectId ? `<button class="icon" data-pa="project" data-id="${esc(r.projectId)}" title="${t('ports.openProject')}">🪟</button>` : ''}
+        ${r.projectId ? `<button class="icon" data-pa="kill" title="${t('ports.kill')}">■</button>` : ''}
+      </td></tr>`).join('')}</tbody></table>` : `<p class="hint">${t('ports.none')}</p>`;
+}
+$('#pRefresh').onclick = () => loadPorts();
+$('#pOnly').onchange = (e) => { e.stopPropagation(); store.set('ember.portsOnly', e.target.checked); renderPorts(); };
+$('#pOnly').checked = store.get('ember.portsOnly', false);
+$('#portList').onclick = async (e) => {
+  const b = e.target.closest('[data-pa]'); if (!b) return;
+  const tr = b.closest('tr'), pid = Number(tr.dataset.pid), port = tr.dataset.port;
+  const r = portRows.find((x) => x.pid === pid && String(x.port) === port);
+  if (b.dataset.pa === 'open') api.openUrl(`http://localhost:${port}`);
+  else if (b.dataset.pa === 'project') api.openProject(b.dataset.id);
+  else if (b.dataset.pa === 'kill' && confirm(t('ports.killQ', { name: r.name, pid, port }))) {
+    const running = items.find((i) => i.id === r.projectId && i.status !== 'stopped');
+    running ? await api.stop(running.id) : await api.killPid(pid);
+    setTimeout(loadPorts, 1200);
+  }
+};
+
 /* ---- settings dialog ---- */
 const fmtDate = (ts) => (ts ? new Date(ts).toLocaleString(LANG === 'en' ? 'en-GB' : 'fa-IR') : '');
 $('#sFetchMin').innerHTML = [5, 15, 30].map((n) => `<option value="${n}">${t('set.min', { n })}</option>`).join('') +
@@ -392,13 +434,20 @@ $('#banners').onclick = (e) => {
 async function openSettings(tab = 'general') {
   fillSettings(await api.settings());
   if (tab === 'cats') renderCats();
+  if (tab === 'ports') loadPorts();
   showTab(tab);
   if (!$('#setDlg').open) $('#setDlg').showModal();
 }
 const saveSettings = async (patch) => fillSettings(await api.setSettings(patch));
 $('#settingsBtn').onclick = () => openSettings(settings && settings.appUpdate && settings.appUpdate.available ? 'updates' : 'general');
-$('#setTabs').onclick = (e) => { const b = e.target.closest('[data-tab]'); if (!b) return; if (b.dataset.tab === 'cats') renderCats(); showTab(b.dataset.tab); };
+$('#setTabs').onclick = (e) => {
+  const b = e.target.closest('[data-tab]'); if (!b) return;
+  if (b.dataset.tab === 'cats') renderCats();
+  if (b.dataset.tab === 'ports') loadPorts();
+  showTab(b.dataset.tab);
+};
 $('#setDlg').onchange = (e) => {
+  if (e.target.id === 'pOnly') return;
   const k = e.target.dataset.set;
   if (k) saveSettings({ [k]: e.target.checked });
   else if (e.target.id === 'sFetchMin') saveSettings({ fetchMinutes: Number(e.target.value) });

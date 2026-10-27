@@ -247,3 +247,15 @@ dialog.settings[open]{display:flex}
   #setTabs .side-h{display:none}
 }
 .card select,.card .path{cursor:auto}
+
+/* settings → ports */
+.portsBar{margin:0 0 12px}
+table.ports{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;font-size:13px}
+.ports th{text-align:start;color:var(--muted);font-weight:600;font-size:12px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.ports td{padding:6px 12px;border-bottom:1px solid #2A211A;vertical-align:middle}
+.ports tr:last-child td{border-bottom:0}
+.ports tr.mine{background:#24180F}
+.ports .pnum{font-family:Consolas,monospace;direction:ltr;font-weight:700;color:var(--o-h);width:70px}
+.ports tr:not(.mine) .pnum{color:var(--text);font-weight:400}
+.ports .pact{white-space:nowrap;text-align:end;width:1%}
+.ports .pact .icon{display:inline-grid;width:28px;height:28px;font-size:13px}

@@ -22,7 +22,8 @@
 |---|---|
 | **Find projects** | Add one project folder, or a folder full of projects. Every `package.json` with a runnable script shows up as a card. |
 | **Install only when needed** | Ember runs `npm` / `pnpm` / `yarn` / `bun install` only when `node_modules` is missing or older than the lock file. |
-| **One port per project** | Every project keeps its own port. If that port is busy when you press ▶, Ember moves to the next free one and passes it to the dev server (`--port` / `-p` for Vite, Next, Astro, Nuxt, Angular, … and the `PORT` variable for the rest). Change it in ✎. |
+| **Ports** | Each project remembers its port. If the project is already running there (left over from before Ember restarted, or started in a terminal), ▶ reconnects to it instead of starting a second copy. Only ports of projects that are running right now are avoided; a port held by another program moves the run to the next free one (`--port` / `-p` for Vite, Next, Astro, Nuxt, Angular, … and `PORT` for the rest). Settings → *Ports* lists every port in use and which project holds it. |
+| **Survives updates** | Projects keep running while Ember restarts for an update; the new Ember reconnects to them, with their earlier log. |
 | **One click to run** | Pick the script, press ▶. The local URL is detected from the output and opens with 🔗. |
 | **Project window** | Click a project (or 📜 Log) to open its own window: name and buttons on top, the live log below (follow, copy, clear). |
 | **Your own categories** | Out of the box there is one category, *Project type* (website, game, mobile, desktop, API, other). Add, rename or delete categories (client, status, …) and their values, each with an icon and a name, in ⚙️ Settings → *Categories*. Every category gets an automatic **All** item; groups can be collapsed. *Project type* is the default category and cannot be deleted. Filter by any of them in the sidebar; search matches them too. |

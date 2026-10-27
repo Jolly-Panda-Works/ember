@@ -28,7 +28,8 @@ npm run dist     # build dist/Ember-Setup.exe and dist/Ember-Portable.exe
 - `projectwatch.js` — "updated — test it": local revision of a project and commits on its git remote
 - `updates.js` — Ember's own update check against GitHub Releases
 - `preload.js` — the `window.ember` API for the UI
-- `ports.js` — one port per project, moving to the next free one
+- `ports.js` — the port a run uses, moving to the next free one
+- `netinfo.js` — listening ports, their processes and which project owns them
 - `src/i18n.js` — every text in Persian and English (also used by the main process)
 - `src/index.html`, `src/app.js` — main window; `src/project.html`, `src/project.js` — project window; `src/common.js` — shared helpers
 - `tools/set-version.js` — version number for CI builds

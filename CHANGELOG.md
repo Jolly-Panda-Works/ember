@@ -5,6 +5,9 @@ Release builds are published automatically from `main`. See the
 
 ## 1.0
 
+- A project that is already running (left over from before Ember restarted, or started outside Ember) is reconnected on its port instead of starting a second copy on the next port. Runs keep going while Ember restarts for an update and come back with their log.
+- Ports are no longer reserved for stopped projects; a project's port is a preference and is not changed because it was busy once.
+- Settings → Ports: every port in use, the program holding it, and which Ember project it belongs to (open, project window, end).
 - English and Persian (Settings → General → Language); the layout turns left-to-right in English.
 - Project window: click a project or 📜 Log; name and buttons on top, live log below (follow, copy, clear).
 - Categories collapse, in the sidebar and in Settings; *Project type* cannot be deleted. The Done button in Settings always stays visible.

@@ -17,7 +17,7 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test",
-    "check": "node --check main.js && node --check preload.js && node --check updates.js && node --check projectwatch.js && node --check ports.js && node --check src/i18n.js && node --check src/common.js && node --check src/app.js && node --check src/project.js",
+    "check": "node --check main.js && node --check preload.js && node --check updates.js && node --check projectwatch.js && node --check ports.js && node --check netinfo.js && node --check src/i18n.js && node --check src/common.js && node --check src/app.js && node --check src/project.js",
     "dist": "electron-builder --win --publish never"
   },
   "devDependencies": {
@@ -35,6 +35,7 @@
       "main.js",
       "preload.js",
       "ports.js",
+      "netinfo.js",
       "updates.js",
       "projectwatch.js",
       "src/**/*",
