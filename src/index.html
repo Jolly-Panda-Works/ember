@@ -10,20 +10,30 @@
 <body>
 <header class="topbar">
   <div class="brand"><img src="icon.svg" alt=""><b>Ember</b><span class="ver" id="ver" hidden></span></div>
-  <input id="q" type="search" data-i18n-ph="search">
+  <label class="search">
+    <span class="searchIco" data-ico="search"></span>
+    <input id="q" type="search" data-i18n-ph="search" data-i18n-title="search" autocomplete="off" spellcheck="false">
+    <kbd class="kbd" data-i18n="search.hint"></kbd>
+  </label>
   <nav class="tools">
-    <button id="add" class="tbtn"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="top.add"></span></button>
-    <button id="settingsBtn" class="tbtn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span data-i18n="top.settings"></span><span id="settingsDot" class="badgeDot" hidden data-i18n-title="top.updateDot"></span></button>
+    <button id="add" class="tbtn accent" data-i18n-title="top.add"><span data-ico="plus"></span><span class="lbl" data-i18n="top.add"></span></button>
+    <button id="settingsBtn" class="tbtn" data-i18n-title="top.settings"><span data-ico="gear"></span><span class="lbl" data-i18n="top.settings"></span><span id="settingsDot" class="badgeDot" hidden data-i18n-title="top.updateDot"></span></button>
   </nav>
 </header>
 
 <div class="layout">
-  <aside><div id="groups"></div></aside>
+  <aside>
+    <nav id="groups" aria-label="Projects"></nav>
+    <div class="brandPanel">
+      <img src="icon.svg" alt="" width="28" height="28">
+      <div><b data-i18n="brand.panelTitle"></b><small data-i18n="brand.panelText"></small></div>
+    </div>
+  </aside>
   <main>
     <div class="scroll">
       <div class="pagehead">
         <h1 id="pageTitle"></h1>
-        <p id="stats"></p>
+        <p id="stats" class="stats"></p>
       </div>
       <div id="banners"></div>
       <section id="grid"></section>
@@ -32,7 +42,7 @@
 </div>
 
 <dialog id="editDlg">
-  <h2 data-i18n="edit.title"></h2>
+  <div class="dlgHead"><h2 data-i18n="edit.title"></h2><button class="icon" id="eClose" data-i18n-title="edit.cancel" data-ico="x"></button></div>
   <div class="box">
     <div class="sec" data-i18n="edit.logo"></div>
     <div class="logoEdit">
@@ -55,7 +65,7 @@
   </div>
   <div class="dlgActions">
     <button class="btn danger" id="eRemove" data-i18n="edit.remove"></button>
-    <span style="flex:1"></span>
+    <span class="grow"></span>
     <button class="btn ghost" id="eCancel" data-i18n="edit.cancel"></button>
     <button class="btn primary" id="eSave" data-i18n="edit.save"></button>
   </div>
@@ -64,12 +74,12 @@
 <dialog id="setDlg" class="settings">
   <nav id="setTabs">
     <div class="side-h" data-i18n="set.title"></div>
-    <button class="nav" data-tab="general" data-i18n="set.tab.general"></button>
-    <button class="nav" data-tab="cats" data-i18n="set.tab.cats"></button>
-    <button class="nav" data-tab="projects" data-i18n="set.tab.projects"></button>
-    <button class="nav" data-tab="updates"><span data-i18n="set.tab.updates"></span><span id="tabDot" class="badgeDot" hidden></span></button>
-    <button class="nav" data-tab="ports" data-i18n="set.tab.ports"></button>
-    <button class="nav" data-tab="about" data-i18n="set.tab.about"></button>
+    <button class="nav" data-tab="general"><span data-ico="sliders"></span><span data-i18n="set.tab.general"></span></button>
+    <button class="nav" data-tab="cats"><span data-ico="tag"></span><span data-i18n="set.tab.cats"></span></button>
+    <button class="nav" data-tab="projects"><span data-ico="sparkles"></span><span data-i18n="set.tab.projects"></span></button>
+    <button class="nav" data-tab="updates"><span data-ico="upCircle"></span><span data-i18n="set.tab.updates"></span><span id="tabDot" class="badgeDot" hidden></span></button>
+    <button class="nav" data-tab="ports"><span data-ico="plug"></span><span data-i18n="set.tab.ports"></span></button>
+    <button class="nav" data-tab="about"><span data-ico="info"></span><span data-i18n="set.tab.about"></span></button>
   </nav>
   <div class="pane">
     <div class="paneBody">
@@ -89,7 +99,7 @@
         </div>
         <div class="box">
           <div class="sec" data-i18n="set.data"></div>
-          <div class="dlgRow"><button class="btn" id="sData" data-i18n="set.dataFolder"></button></div>
+          <div class="dlgRow"><button class="btn" id="sData"><span data-ico="folderOpen"></span><span data-i18n="set.dataFolder"></span></button></div>
         </div>
       </section>
 
@@ -97,7 +107,7 @@
         <h2 data-i18n="set.cats"></h2>
         <p class="sub" data-i18n="set.catsSub"></p>
         <div id="catList"></div>
-        <button class="btn" id="addCat" data-i18n="cat.addCat"></button>
+        <button class="btn" id="addCat"><span data-ico="plus"></span><span data-i18n="cat.addCat"></span></button>
         <div id="emojiPick" hidden></div>
       </section>
 
@@ -109,7 +119,7 @@
           <label class="switch"><input type="checkbox" data-set="watchProjects"><span data-i18n="set.watch"></span></label>
           <label class="switch"><input type="checkbox" data-set="fetchRemote"><span><span data-i18n="set.fetch"></span><small data-i18n="set.fetchHint"></small></span></label>
           <label><span data-i18n="set.every"></span><select id="sFetchMin"></select></label>
-          <div class="dlgRow"><button class="btn" id="sCheckProjects" data-i18n="set.checkNow"></button><span id="sProjMsg" class="hint"></span></div>
+          <div class="dlgRow"><button class="btn" id="sCheckProjects"><span data-ico="refresh"></span><span data-i18n="set.checkNow"></span></button><span id="sProjMsg" class="hint"></span></div>
         </div>
       </section>
 
@@ -123,7 +133,7 @@
           <div id="uNotes" class="notes" hidden></div>
           <div class="dlgRow">
             <button class="btn primary" id="uInstall" hidden></button>
-            <button class="btn" id="uCheck" data-i18n="set.checkUpdate"></button>
+            <button class="btn" id="uCheck"><span data-ico="refresh"></span><span data-i18n="set.checkUpdate"></span></button>
             <button class="btn ghost" id="uPage" data-i18n="set.releases"></button>
           </div>
         </div>
@@ -134,7 +144,7 @@
         <h2 data-i18n="ports.title"></h2>
         <p class="sub" data-i18n="ports.sub"></p>
         <div class="dlgRow portsBar">
-          <button class="btn" id="pRefresh" data-i18n="ports.refresh"></button>
+          <button class="btn" id="pRefresh"><span data-ico="refresh"></span><span data-i18n="ports.refresh"></span></button>
           <label class="switch small"><input type="checkbox" id="pOnly"><span data-i18n="ports.onlyProjects"></span></label>
           <span class="hint" id="pCount"></span>
         </div>
@@ -165,7 +175,7 @@
         </div>
       </section>
     </div>
-    <div class="paneFoot"><span style="flex:1"></span><button class="btn primary" id="setClose" data-i18n="set.done"></button></div>
+    <div class="paneFoot"><span class="grow"></span><button class="btn primary" id="setClose" data-i18n="set.done"></button></div>
   </div>
 </dialog>
 <script src="i18n.js"></script>

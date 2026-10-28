@@ -5,6 +5,7 @@ Release builds are published automatically from `main`. See the
 
 ## 1.0
 
+- New look: black and ember-orange design system (CSS tokens, Lucide-style SVG icons replace emoji), redesigned top bar with search shortcut (Ctrl/Cmd+K), sidebar, project cards, settings, dialogs and project window. Run/Stop show a loading state while starting or stopping, package readiness has icon + text states, toasts and in-app confirm dialogs replace native alerts, loading skeletons and empty states, reduced-motion support.
 - Windows: running a project no longer opens a console window.
 - The "Open" button appears as soon as the project's port is listening, even when the dev server prints no address.
 - A project that is already running (left over from before Ember restarted, or started outside Ember) is reconnected on its port instead of starting a second copy on the next port. Runs keep going while Ember restarts for an update and come back with their log.

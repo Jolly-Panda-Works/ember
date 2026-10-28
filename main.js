@@ -775,9 +775,9 @@ function createWindow() {
   win.on('closed', () => { if (!tray) projWins.forEach((w) => !w.isDestroyed() && w.close()); });
 }
 const windowOptions = (extra) => ({
-  backgroundColor: '#110D0A', icon: path.join(__dirname, 'build', 'icon.png'),
+  backgroundColor: '#0B0B0D', icon: path.join(__dirname, 'build', 'icon.png'),
   // the top bar of the page is the title bar, in the app's colours (like SnapshotAll / DeskPresence)
-  ...(process.platform === 'win32' ? { titleBarStyle: 'hidden', titleBarOverlay: { color: '#16110D', symbolColor: '#F5EEE8', height: 56 } } : {}),
+  ...(process.platform === 'win32' ? { titleBarStyle: 'hidden', titleBarOverlay: { color: '#0B0B0D', symbolColor: '#F5F5F7', height: 52 } } : {}),
   webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
   ...extra,
 });

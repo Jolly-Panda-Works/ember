@@ -1,7 +1,7 @@
 /* Main window: the project list, the edit dialog and Settings. Shared helpers are in common.js. */
 
 /* ---- state ---- */
-let items = [], cats = [], editing = null, settings = null;
+let items = [], cats = [], editing = null, settings = null, loaded = false;
 let filter = { updated: false, cats: {}, q: '' };   // cats: categoryId -> valueId ('' = not set)
 let collapsed = new Set(store.get('ember.collapsed', []));       // sidebar groups that are closed
 let collapsedEdit = new Set(store.get('ember.collapsedEdit', [])); // categories closed in Settings
@@ -16,76 +16,81 @@ function visible() {
 
 /* ---- sidebar ---- */
 function renderSide() {
-  const nav = (attrs, label, n, on) => `<button class="nav ${on ? 'active' : ''}" ${attrs}>${label}<span class="n">${n}</span></button>`;
+  const nav = (attrs, icon, label, n, on) => `<button class="nav ${on ? 'active' : ''}" ${attrs} ${on ? 'aria-current="true"' : ''}><span class="navIco">${icon}</span><span class="navTxt">${label}</span><span class="n">${n}</span></button>`;
   const upd = items.filter((i) => i.updated || i.behind > 0).length;
   const noFilter = !filter.updated && !Object.keys(filter.cats).length;
   const group = (key, title, body, extra = '') => {
     const closed = collapsed.has(key);
-    return `<div class="group ${closed ? 'closed' : ''}"><h4 data-toggle="${esc(key)}" title="${t('side.collapse')}"><span class="chev">▾</span>${title}${extra}</h4><div class="gBody">${body}</div></div>`;
+    return `<div class="group ${closed ? 'closed' : ''}"><h4 data-toggle="${esc(key)}" title="${t('side.collapse')}" role="button" tabindex="0" aria-expanded="${!closed}"><span class="chev">${ico('chevron')}</span><span class="gTitle">${title}</span>${extra}</h4><div class="gBody">${body}</div></div>`;
   };
   let h = group('__projects', t('side.projects'),
-    nav('data-all', '📁 ' + t('side.allProjects'), items.length, noFilter) + nav('data-updated', '🆕 ' + t('side.updated'), upd, filter.updated));
+    nav('data-all', ico('grid'), t('side.allProjects'), items.length, noFilter) + nav('data-updated', ico('clock'), t('side.recent'), upd, filter.updated));
   for (const c of cats) {
     const none = items.filter((i) => !valueOf(i, c)).length;
-    h += group(c.id, `${esc(c.icon)} ${esc(c.name)}`,
+    h += group(c.id, esc(c.name),
       // "All" is automatic in every category: it clears that category's filter
-      nav(`data-cat="${esc(c.id)}" data-val="*"`, '✦ ' + t('side.all'), items.length, !(c.id in filter.cats)) +
-      c.values.map((v) => nav(`data-cat="${esc(c.id)}" data-val="${esc(v.id)}"`, `${esc(v.icon)} ${esc(v.name)}`,
+      nav(`data-cat="${esc(c.id)}" data-val="*"`, ico('layers'), t('side.all'), items.length, !(c.id in filter.cats)) +
+      c.values.map((v) => nav(`data-cat="${esc(c.id)}" data-val="${esc(v.id)}"`, `<span class="emoji">${esc(v.icon)}</span>`, esc(v.name),
         items.filter((i) => (i.cats || {})[c.id] === v.id).length, filter.cats[c.id] === v.id)).join('') +
-      (none && c.values.length ? nav(`data-cat="${esc(c.id)}" data-val=""`, '— ' + t('side.none', { name: esc(c.name) }), none, filter.cats[c.id] === '') : ''),
-      `<button class="mini" data-manage title="${t('side.manage')}">✎</button>`);
+      (none && c.values.length ? nav(`data-cat="${esc(c.id)}" data-val=""`, '<span class="emoji">–</span>', t('side.none', { name: esc(c.name) }), none, filter.cats[c.id] === '') : ''),
+      `<button class="mini" data-manage title="${t('side.manage')}" aria-label="${t('side.manage')}">${ico('pencil')}</button>`);
   }
-  h += `<button class="btn ghost" style="width:100%" data-manage>＋ ${t('side.newCat')}</button>`;
+  h += `<button class="newCat" data-manage>${ico('plus')}${t('side.newCat')}</button>`;
   $('#groups').innerHTML = h;
 }
 
 /* ---- project cards ---- */
+const selectHtml = (i, busy) => `<span class="sel"><select aria-label="${t('card.env')}" ${busy ? 'disabled' : ''}>${i.scripts.map((s) => `<option ${s === i.script ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>${ico('chevron')}</span>`;
 function card(i) {
-  const busy = i.status !== 'stopped';
   const tags = tagsHtml(i, cats);
-  return `<article class="card ${i.status} ${i.updated || i.behind > 0 ? 'updated' : ''}" data-id="${i.id}" title="${t('card.openTip')}">
+  const busy = i.status !== 'stopped' || pending.has(i.id);
+  return `<article class="card ${i.status} ${pending.get(i.id) || ''} ${i.updated || i.behind > 0 ? 'updated' : ''}" data-id="${i.id}" title="${t('card.openTip')}">
     <div class="top">${logoHtml(i, cats)}
       <div class="ttl"><h3 class="name" title="${t('card.renameTip')}">${esc(i.name)}</h3>
-        <div class="state"><span class="dot"></span>${statusText(i.status)}${portHtml(i)}</div></div>
+        <div class="state"><span class="dot"></span><span>${statusText(i.status)}</span>${portHtml(i)}</div></div>
       ${i.updated ? `<span class="tag new">${t('card.updated')}</span>` : ''}
-      <button class="icon" data-act="edit" title="${t('card.edit')}">✎</button></div>
+      <button class="icon" data-act="edit" title="${t('card.edit')}" aria-label="${t('card.edit')}">${ico('pencil')}</button></div>
     ${tags ? `<div class="tags">${tags}</div>` : ''}
-    <div class="pathRow"><div class="path" title="${esc(i.path)}">${esc(i.path)}</div>
-      <button class="icon" data-act="folder" title="${t('card.folder')}">📂</button></div>
-    <div class="row">
-      <select ${busy ? 'disabled' : ''}>${i.scripts.map((s) => `<option ${s === i.script ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>
-      <span class="pm">${i.pm}</span>${pkgHtml(i)}
-    </div>${updHtml(i)}
+    <div class="pathRow">${ico('folder', 'pathIco')}<div class="path" title="${esc(i.path)}">${esc(i.path)}</div>
+      <button class="icon sm" data-act="copy" title="${t('card.copyPath')}" aria-label="${t('card.copyPath')}">${ico('copy')}</button>
+      <button class="icon sm" data-act="folder" title="${t('card.folder')}" aria-label="${t('card.folder')}">${ico('folderOpen')}</button></div>
+    <div class="meta">${selectHtml(i, busy)}<span class="chip pm">${esc(i.pm)}</span>${pkgHtml(i)}</div>
+    ${updHtml(i)}
     <div class="actions">
-      ${busy ? `<button class="btn danger" data-act="stop">${t('card.stop')}</button>`
-             : `<button class="btn primary" data-act="start" ${i.exists ? '' : 'disabled'}>${t('card.run')}</button>`}
-      ${i.url ? `<button class="btn" data-act="open">${t('card.open')}</button>` : ''}
-      <button class="btn ghost" data-act="window">${t('card.log')}</button>
+      ${runBtn(i)}
+      ${i.url ? `<button class="btn" data-act="open">${ico('external')}${t('card.open')}</button>` : ''}
+      <button class="btn ghost" data-act="window">${ico('terminal')}${t('card.log')}</button>
     </div></article>`;
 }
+const skeleton = () => Array.from({ length: 6 }, () => `<div class="card skeleton" aria-hidden="true"><div class="top"><div class="sk logo"></div><div class="ttl"><div class="sk line w60"></div><div class="sk line w30"></div></div></div><div class="sk line w90"></div><div class="sk line w70"></div><div class="sk btnSk"></div></div>`).join('');
+const emptyHtml = () => items.length
+  ? `<div class="empty">${ico('searchX')}<h3>${t('page.noMatchTitle')}</h3><p>${t('page.noMatch')}</p><button class="btn" data-empty="clear">${t('page.clear')}</button></div>`
+  : `<div class="empty">${ico('inbox')}<h3>${t('page.emptyTitle')}</h3><p>${t('page.empty')}</p><button class="btn primary" data-empty="add">${ico('plus')}${t('top.add')}</button></div>`;
 
 function render() {
   renderSide();
   const v = visible();
-  $('#grid').innerHTML = v.length ? v.map(card).join('') : `<div class="empty">${t(items.length ? 'page.noMatch' : 'page.empty')}</div>`;
+  $('#grid').setAttribute('aria-busy', String(!loaded));
+  $('#grid').innerHTML = !loaded ? skeleton() : v.length ? v.map(card).join('') : emptyHtml();
   // page title = the active filters, e.g. "Game · Jolly Panda"
   const parts = cats.filter((c) => c.id in filter.cats).map((c) => {
     const val = c.values.find((x) => x.id === filter.cats[c.id]);
-    return val ? `${val.icon} ${val.name}` : t('side.none', { name: c.name });
+    return val ? val.name : t('side.none', { name: c.name });
   });
-  if (filter.updated) parts.unshift('🆕 ' + t('side.updated'));
+  if (filter.updated) parts.unshift(t('side.recent'));
   $('#pageTitle').textContent = parts.length ? parts.join(' · ') : t('page.all');
   const run = items.filter((i) => i.status === 'running').length;
-  $('#stats').textContent = v.length === items.length ? t('page.stats', { n: items.length, run }) : t('page.statsOf', { v: v.length, n: items.length, run });
+  $('#stats').innerHTML = `<span class="stat"><b>${v.length === items.length ? items.length : `${v.length} / ${items.length}`}</b> ${t('page.total')}</span><span class="stat run ${run ? 'on' : ''}"><i class="dot"></i><b>${run}</b> ${t('page.running')}</span>`;
 }
 
-async function reload() { [items, cats] = await Promise.all([api.list(), api.categories()]); render(); }
+async function reload() { [items, cats] = await Promise.all([api.list(), api.categories()]); loaded = true; render(); }
+ui.rerender = render;
 
 /* ---- events from the app ---- */
 api.onEvent((e) => {
   if (e.type === 'state') {
     const i = items.find((x) => x.id === e.id);
-    if (i) { const { type, id, ...rest } = e; Object.assign(i, rest); render(); }
+    if (i) { const { type, id, ...rest } = e; settlePending(e); Object.assign(i, rest); render(); }
   } else if (e.type === 'appUpdate') {
     if (settings) settings.appUpdate = e.appUpdate;
     renderAppUpdate();
@@ -103,6 +108,7 @@ api.onEvent((e) => {
 });
 
 /* ---- clicks ---- */
+$('#groups').onkeydown = (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('h4[data-toggle]')) { e.preventDefault(); e.target.click(); } };
 $('#groups').onclick = (e) => {
   const b = e.target.closest('button, h4'); if (!b) return;
   if (b.hasAttribute('data-manage')) return openSettings('cats');
@@ -122,16 +128,23 @@ $('#groups').onclick = (e) => {
 };
 $('#q').oninput = (e) => { filter.q = e.target.value; render(); };
 $('#grid').onclick = async (e) => {
-  const c = e.target.closest('.card'); if (!c) return;
+  const em = e.target.closest('[data-empty]');
+  if (em) {
+    if (em.dataset.empty === 'add') { items = await api.add(); render(); }
+    else { filter = { updated: false, cats: {}, q: '' }; $('#q').value = ''; render(); }
+    return;
+  }
+  const c = e.target.closest('.card:not(.skeleton)'); if (!c) return;
   const i = items.find((x) => x.id === c.dataset.id);
   const b = e.target.closest('[data-act]');
   if (!b) {
     // a click anywhere else on the card opens its window (not on the script list or while renaming)
-    if (!e.target.closest('select, input, h3.name')) api.openProject(i.id);
+    if (!e.target.closest('select, input, h3.name, .sel')) api.openProject(i.id);
     return;
   }
   if (b.dataset.act === 'edit') return openEdit(i);
   if (b.dataset.act === 'window') return api.openProject(i.id);
+  if (b.disabled) return;
   const r = await projectAction(b.dataset.act, i, b, c.querySelector('select').value);
   if (Array.isArray(r)) { items = r; render(); }
 };
@@ -160,6 +173,16 @@ $('#grid').onchange = (e) => {
 };
 $('#add').onclick = async () => { items = await api.add(); render(); };
 
+/* ---- search: Ctrl/Cmd+K or "/" focuses it, Esc clears it ---- */
+if (api.platform === 'darwin') $('.kbd').textContent = '⌘ K';
+document.addEventListener('keydown', (e) => {
+  const typing = /^(INPUT|SELECT|TEXTAREA)$/.test((document.activeElement || {}).tagName);
+  if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') || (e.key === '/' && !typing && !document.querySelector('dialog[open]'))) {
+    e.preventDefault(); $('#q').focus(); $('#q').select();
+  }
+});
+$('#q').onkeydown = (e) => { if (e.key === 'Escape') { if ($('#q').value) { $('#q').value = ''; filter.q = ''; render(); } else $('#q').blur(); } };
+
 /* ---- edit dialog ---- */
 function openEdit(i) {
   editing = i;
@@ -187,6 +210,7 @@ $('#eLogoPick').onclick = () => logoAction(api.pickLogo);
 $('#eLogoAuto').onclick = () => logoAction((id) => api.setLogoMode(id, 'auto'));
 $('#eLogoNone').onclick = () => logoAction((id) => api.setLogoMode(id, 'none'));
 $('#eCancel').onclick = () => $('#editDlg').close();
+$('#eClose').onclick = () => $('#editDlg').close();
 $('#eSave').onclick = async () => {
   const sel = {};
   document.querySelectorAll('#eCats select').forEach((el) => { if (el.value) sel[el.dataset.cid] = el.value; });
@@ -194,7 +218,7 @@ $('#eSave').onclick = async () => {
   $('#editDlg').close(); render();
 };
 $('#eRemove').onclick = async () => {
-  if (!confirm(t('edit.removeQ'))) return;
+  if (!(await confirmDlg(t('edit.removeQ'), { ok: t('edit.remove'), danger: true }))) return;
   items = await api.remove(editing.id); $('#editDlg').close(); render();
 };
 
@@ -219,12 +243,12 @@ function renderCats() {
     const locked = c.id === 'type';   // the default category cannot be deleted
     return `<div class="catBox ${closed ? 'closed' : ''}" data-ci="${ci}">
       <div class="catHead">
-        <button type="button" class="chevBtn" data-c="toggle" title="${t('side.collapse')}">▾</button>
+        <button type="button" class="chevBtn" data-c="toggle" title="${t('side.collapse')}" aria-expanded="${!closed}">${ico('chevron')}</button>
         <button type="button" class="icoBtn" data-f="icon" title="${t('cat.pickIcon')}">${esc(c.icon)}</button>
         <input data-f="name" value="${esc(c.name)}" data-i18n-ph="cat.namePh" placeholder="${t('cat.namePh')}" maxlength="40">
         ${closed ? `<span class="n">${t('cat.noValues', { n: c.values.length })}</span>` : ''}
-        ${locked ? `<span class="lock" title="${t('cat.locked')}">🔒</span>`
-                 : `<button class="btn ghost" data-c="delCat" title="${t('cat.delete')}">🗑</button>`}
+        ${locked ? `<span class="lock" title="${t('cat.locked')}">${ico('lock')}</span>`
+                 : `<button class="icon" data-c="delCat" title="${t('cat.delete')}" aria-label="${t('cat.delete')}">${ico('trash')}</button>`}
       </div>
       <div class="catVals">
         <div class="catAll">${t('cat.allAuto')}</div>
@@ -232,8 +256,8 @@ function renderCats() {
           <button type="button" class="icoBtn" data-vf="icon" title="${t('cat.pickIcon')}">${esc(v.icon)}</button>
           <input data-vf="name" value="${esc(v.name)}" placeholder="${t('cat.valuePh')}" maxlength="40">
           <span class="n" title="${t('cat.count')}">${used(c.id, v.id)}</span>
-          <button class="btn ghost" data-c="delVal" title="${t('cat.deleteVal')}">✕</button></div>`).join('')}
-        <button class="btn ghost" data-c="addVal">${t('cat.addValue')}</button>
+          <button class="icon sm" data-c="delVal" title="${t('cat.deleteVal')}" aria-label="${t('cat.deleteVal')}">${ico('x')}</button></div>`).join('')}
+        <button class="btn sm ghost" data-c="addVal">${ico('plus')}${t('cat.addValue')}</button>
       </div>
     </div>`;
   }).join('') || `<p class="hint">${t('cat.empty')}</p>`;
@@ -263,7 +287,7 @@ $('#catList').addEventListener('input', (e) => {
   tg.obj[tg.key] = e.target.value;
   queueCatSave();
 });
-$('#catList').onclick = (e) => {
+$('#catList').onclick = async (e) => {
   const ib = e.target.closest('.icoBtn');
   if (ib) return openPicker(ib);
   const b = e.target.closest('[data-c]'); if (!b) return;
@@ -278,10 +302,10 @@ $('#catList').onclick = (e) => {
   } else if (b.dataset.c === 'delVal') {
     const v = c.values[b.closest('.valRow').dataset.vi];
     const n = items.filter((i) => (i.cats || {})[c.id] === v.id).length;
-    if (n && !confirm(t('cat.delValQ', { name: v.name, n }))) return;
+    if (n && !(await confirmDlg(t('cat.delValQ', { name: v.name, n }), { ok: t('cat.deleteVal'), danger: true }))) return;
     c.values = c.values.filter((x) => x !== v); saveCats(true);
   } else if (b.dataset.c === 'delCat' && c.id !== 'type') {
-    if (!confirm(t('cat.delCatQ', { name: c.name }))) return;
+    if (!(await confirmDlg(t('cat.delCatQ', { name: c.name }), { ok: t('cat.delete'), danger: true }))) return;
     cats.splice(ci, 1); delete filter.cats[c.id]; saveCats(true);
   }
 };
@@ -343,9 +367,9 @@ function renderPorts() {
       <td title="${esc(r.cmd)}"><b>${esc(r.name || '?')}</b> <small class="hint">PID ${r.pid}</small></td>
       <td>${r.projectId ? `<span class="tag ${r.how === 'ember' ? 'new' : ''}" title="${t(r.how === 'ember' ? 'ports.byEmber' : 'ports.byPath')}">${esc(r.projectName)}</span>` : `<span class="hint">${t('ports.other')}</span>`}</td>
       <td class="pact">
-        <button class="icon" data-pa="open" title="${t('ports.open')}">🔗</button>
-        ${r.projectId ? `<button class="icon" data-pa="project" data-id="${esc(r.projectId)}" title="${t('ports.openProject')}">🪟</button>` : ''}
-        ${r.projectId ? `<button class="icon" data-pa="kill" title="${t('ports.kill')}">■</button>` : ''}
+        <button class="icon sm" data-pa="open" title="${t('ports.open')}" aria-label="${t('ports.open')}">${ico('external')}</button>
+        ${r.projectId ? `<button class="icon sm" data-pa="project" data-id="${esc(r.projectId)}" title="${t('ports.openProject')}" aria-label="${t('ports.openProject')}">${ico('window')}</button>` : ''}
+        ${r.projectId ? `<button class="icon sm danger" data-pa="kill" title="${t('ports.kill')}" aria-label="${t('ports.kill')}">${ico('stop')}</button>` : ''}
       </td></tr>`).join('')}</tbody></table>` : `<p class="hint">${t('ports.none')}</p>`;
 }
 $('#pRefresh').onclick = () => loadPorts();
@@ -357,7 +381,7 @@ $('#portList').onclick = async (e) => {
   const r = portRows.find((x) => x.pid === pid && String(x.port) === port);
   if (b.dataset.pa === 'open') api.openUrl(`http://localhost:${port}`);
   else if (b.dataset.pa === 'project') api.openProject(b.dataset.id);
-  else if (b.dataset.pa === 'kill' && confirm(t('ports.killQ', { name: r.name, pid, port }))) {
+  else if (b.dataset.pa === 'kill' && await confirmDlg(t('ports.killQ', { name: r.name, pid, port }), { ok: t('ports.kill'), danger: true })) {
     const running = items.find((i) => i.id === r.projectId && i.status !== 'stopped');
     running ? await api.stop(running.id) : await api.killPid(pid);
     setTimeout(loadPorts, 1200);
@@ -394,10 +418,10 @@ function renderAppUpdate() {
   let st;
   if (u.downloading) st = t('up.downloading', { v: `<code>${esc(u.latest.version)}</code>`, p: Math.round((u.progress || 0) * 100) });
   else if (u.checking) st = t('up.checking');
-  else if (u.error) st = `<span class="bad">⚠ ${esc(u.error)}</span>`;
-  else if (ready) st = `<span class="ok">${t('up.ready', { v: `<code>${esc(u.readyVersion)}</code>` })}</span>`;
+  else if (u.error) st = `<span class="chip bad">${ico('alert')}${esc(u.error)}</span>`;
+  else if (ready) st = `<span class="ok inl">${ico('circleCheck')}${t('up.ready', { v: `<code>${esc(u.readyVersion)}</code>` })}</span>`;
   else if (avail) st = `<span class="warn">${t('up.available', { v: `<code>${esc(u.latest.version)}</code>` })}</span> <small class="hint">(${fmtDate(u.latest.publishedAt)})</small>`;
-  else if (u.checkedAt) st = `<span class="ok">${t('up.latest')}</span> <small class="hint">${t('up.lastCheck', { t: ago(u.checkedAt) })}</small>`;
+  else if (u.checkedAt) st = `<span class="ok inl">${ico('circleCheck')}${t('up.latest')}</span> <small class="hint">${t('up.lastCheck', { t: ago(u.checkedAt) })}</small>`;
   else st = t('up.never');
   $('#uStatus').innerHTML = st;
   $('#uProgress').hidden = !u.downloading;
@@ -414,14 +438,14 @@ function renderBanners() {
   const u = settings.appUpdate || {};
   const code = (v) => `<code>${esc(v)}</code>`;
   let h = '';
-  if (settings.justUpdated) h += `<div class="banner ok">${t('banner.updated', { v: code(settings.justUpdated) })} <button class="btn ghost" data-banner="notes">${t('banner.notes')}</button><button class="btn ghost" data-banner="dismiss">✕</button></div>`;
-  if (u.available && u.latest && u.ready) h += `<div class="banner">${t('banner.ready', { v: code(u.readyVersion) })} <button class="btn primary" data-banner="restart">${t('banner.restart')}</button></div>`;
-  else if (u.available && u.latest && !u.downloading) h += `<div class="banner">${t('banner.available', { v: code(u.latest.version) })} <button class="btn primary" data-banner="update">${t('banner.view')}</button></div>`;
+  if (settings.justUpdated) h += `<div class="banner ok">${ico('sparkles')}<span>${t('banner.updated', { v: code(settings.justUpdated) })}</span> <button class="btn sm ghost" data-banner="notes">${t('banner.notes')}</button><button class="icon sm" data-banner="dismiss" aria-label="${t('toast.close')}">${ico('x')}</button></div>`;
+  if (u.available && u.latest && u.ready) h += `<div class="banner">${ico('upCircle')}<span>${t('banner.ready', { v: code(u.readyVersion) })}</span> <button class="btn sm primary" data-banner="restart">${t('banner.restart')}</button></div>`;
+  else if (u.available && u.latest && !u.downloading) h += `<div class="banner">${ico('upCircle')}<span>${t('banner.available', { v: code(u.latest.version) })}</span> <button class="btn sm primary" data-banner="update">${t('banner.view')}</button></div>`;
   $('#banners').innerHTML = h;
 }
 async function restartForUpdate() {
   const run = items.filter((i) => i.status !== 'stopped').length;
-  if (run && !confirm(t('up.runningQ', { n: run }))) return;
+  if (run && !(await confirmDlg(t('up.runningQ', { n: run }), { ok: t('banner.restart') }))) return;
   settings.appUpdate = await api.installAppUpdate(); renderAppUpdate();
 }
 $('#banners').onclick = (e) => {

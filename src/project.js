@@ -5,27 +5,27 @@ let p = null, cats = [];
 function renderHead() {
   if (!p) { $('#head').innerHTML = ''; $('#info').innerHTML = `<p class="empty">${t('proj.gone')}</p>`; return; }
   document.title = `${p.name} — Ember`;
-  const busy = p.status !== 'stopped';
+  const busy = p.status !== 'stopped' || pending.has(p.id);
   $('#head').className = `topbar projHead ${p.status}`;
   $('#head').innerHTML = `${logoHtml(p, cats)}
     <div class="ttl"><h1 class="name" title="${t('card.renameTip')}">${esc(p.name)}</h1>
-      <div class="state"><span class="dot"></span>${statusText(p.status)}${portHtml(p)}</div></div>
+      <div class="state"><span class="dot"></span><span>${statusText(p.status)}</span>${portHtml(p)}</div></div>
     ${p.updated ? `<span class="tag new">${t('card.updated')}</span>` : ''}
     <nav class="tools">
-      ${busy ? `<button class="btn danger" data-act="stop">${t('card.stop')}</button>`
-             : `<button class="btn primary" data-act="start" ${p.exists ? '' : 'disabled'}>${t('card.run')}</button>`}
-      ${p.url ? `<button class="btn" data-act="open">${t('card.open')}</button>` : ''}
-      <button class="icon" data-act="folder" title="${t('card.folder')}">📂</button>
-      <button class="icon" data-act="edit" title="${t('card.edit')}">✎</button>
+      ${runBtn(p)}
+      ${p.url ? `<button class="btn" data-act="open">${ico('external')}${t('card.open')}</button>` : ''}
+      <button class="icon" data-act="folder" title="${t('card.folder')}" aria-label="${t('card.folder')}">${ico('folderOpen')}</button>
+      <button class="icon" data-act="edit" title="${t('card.edit')}" aria-label="${t('card.edit')}">${ico('pencil')}</button>
     </nav>`;
   const tags = tagsHtml(p, cats);
   $('#info').innerHTML = `
     <div class="row">
       ${tags ? `<div class="tags">${tags}</div>` : ''}
       <label class="scriptSel">${t('proj.script')}
-        <select ${busy ? 'disabled' : ''}>${p.scripts.map((s) => `<option ${s === p.script ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></label>
-      <span class="pm">${p.pm}</span>${pkgHtml(p)}
-      <div class="path" title="${esc(p.path)}">${esc(p.path)}</div>
+        <span class="sel"><select ${busy ? 'disabled' : ''}>${p.scripts.map((s) => `<option ${s === p.script ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>${ico('chevron')}</span></label>
+      <span class="chip pm">${esc(p.pm)}</span>${pkgHtml(p)}
+      <div class="pathRow">${ico('folder', 'pathIco')}<div class="path" title="${esc(p.path)}">${esc(p.path)}</div>
+        <button class="icon sm" data-act="copy" title="${t('card.copyPath')}" aria-label="${t('card.copyPath')}">${ico('copy')}</button></div>
     </div>${updHtml(p)}`;
 }
 
@@ -48,15 +48,16 @@ async function load() {
 api.onEvent(async (e) => {
   if (e.type === 'log' && e.id === ID) append(e.text);
   else if (e.type === 'logClear' && e.id === ID) { logEl.textContent = ''; showEmpty(); }
-  else if (e.type === 'state' && e.id === ID && p) { const { type, id, ...rest } = e; Object.assign(p, rest); renderHead(); }
+  else if (e.type === 'state' && e.id === ID && p) { const { type, id, ...rest } = e; settlePending(e); Object.assign(p, rest); renderHead(); }
   else if (e.type === 'categories' || e.type === 'projects') {
     [cats, p] = await Promise.all([api.categories(), api.list().then((l) => l.find((x) => x.id === ID) || null)]);
     renderHead();
   }
 });
 
+ui.rerender = () => renderHead();
 document.body.onclick = async (e) => {
-  const b = e.target.closest('[data-act]'); if (!b || !p) return;
+  const b = e.target.closest('[data-act]'); if (!b || !p || b.disabled) return;
   if (b.dataset.act === 'edit') return api.editProject(p.id);
   const r = await projectAction(b.dataset.act, p, b, $('#info select') && $('#info select').value);
   if (Array.isArray(r)) { p = r.find((x) => x.id === ID) || null; renderHead(); }
@@ -84,7 +85,7 @@ $('#head').ondblclick = (e) => {
 $('#clear').onclick = () => api.clearLog(ID);
 $('#copy').onclick = async (e) => {
   try { await navigator.clipboard.writeText(logEl.textContent); } catch {}
-  e.target.textContent = t('proj.copied'); setTimeout(() => (e.target.textContent = t('proj.copy')), 1200);
+  const lbl = e.currentTarget.querySelector('span:last-child'); lbl.textContent = t('proj.copied'); setTimeout(() => (lbl.textContent = t('proj.copy')), 1200);
 };
 
 load();
