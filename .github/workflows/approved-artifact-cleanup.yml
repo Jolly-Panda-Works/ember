@@ -1,0 +1,45 @@
+name: Approved artifact cleanup
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const approved = [{"run":"40553510271","names":["ember-windows"]},{"run":"40549352034","names":["ember-windows"]},{"run":"40548886983","names":["ember-windows"]},{"run":"40545413034","names":["ember-windows"]},{"run":"40545410319","names":["ember-windows"]},{"run":"40545152192","names":["ember-windows"]},{"run":"40542486707","names":["ember-android","ember-windows"]},{"run":"40540549615","names":["ember-android","ember-windows"]},{"run":"40540097568","names":["ember-android","ember-windows"]},{"run":"40538346965","names":["ember-android","ember-windows"]},{"run":"40538235563","names":["ember-android","ember-windows"]},{"run":"40538088380","names":["ember-android","ember-windows"]},{"run":"40535882968","names":["ember-android","ember-windows"]},{"run":"40535841588","names":["ember-android","ember-windows"]},{"run":"40535830891","names":["ember-windows"]},{"run":"40535615375","names":["ember-android","ember-windows"]},{"run":"40535545661","names":["ember-android","ember-windows"]},{"run":"40535037118","names":["ember-android","ember-windows"]},{"run":"40533903048","names":["ember-android","ember-windows"]},{"run":"40531258820","names":["ember-android","ember-windows"]}];
+            const keys = new Set(approved.flatMap(r => r.names.map(n => r.run + ':' + n)));
+            const scope = { owner: context.repo.owner, repo: context.repo.repo };
+            const list = () => github.paginate(github.rest.actions.listArtifactsForRepo, { ...scope, per_page: 100 });
+            const matches = a => keys.has(String(a.workflow_run?.id) + ':' + a.name);
+            const artifacts = (await list()).filter(matches);
+            const seen = new Set();
+            for (const a of artifacts) {
+              const key = String(a.workflow_run.id) + ':' + a.name;
+              if (seen.has(key)) throw new Error('Duplicate artifact identity: ' + key);
+              seen.add(key);
+            }
+            core.info('Approved identities: ' + keys.size + '; currently present: ' + artifacts.length);
+            let deleted = 0;
+            let bytes = 0;
+            for (const a of artifacts) {
+              await github.rest.actions.deleteArtifact({ ...scope, artifact_id: a.id });
+              deleted++;
+              bytes += a.size_in_bytes;
+              core.info('Deleted ' + a.id + ' run=' + a.workflow_run.id + ' name=' + a.name);
+            }
+            const remaining = (await list()).filter(matches);
+            await core.summary.addHeading('Approved artifact cleanup').addTable([
+              [{ data: 'Metric', header: true }, { data: 'Value', header: true }],
+              ['Approved identities', String(keys.size)],
+              ['Already absent', String(keys.size - artifacts.length)],
+              ['Deleted in this run', String(deleted)],
+              ['Deleted bytes', String(bytes)],
+              ['Remaining approved artifacts', String(remaining.length)]
+            ]).write();
+            if (remaining.length) throw new Error('Approved artifacts remain: ' + remaining.length);
